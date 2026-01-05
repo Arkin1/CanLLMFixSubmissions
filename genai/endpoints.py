@@ -1,17 +1,28 @@
 
 import requests
 from openai import OpenAI
+import os
 
-class OllamaAPI():
-    def __init__(self, endpoint:str, token:str):
-        self.endpoint = endpoint
-        self.token = token
+class LLMApi():
+    def __init__(self, model_name:str):
+        self.model_name = model_name
 
-    def generate(self, model:str, prompt:str):
+    def generate(self, prompt:str):
+        pass
+
+class OllamaAPI(LLMApi):
+    def __init__(self, model_name):
+        super().__init__(model_name)
+        self.vendor = 'Ollama'
+
+        self.endpoint = os.environ.get('OLLAMA_ENDPOINT')
+        self.token = os.environ.get('OLLAMA_TOKEN')
+
+    def generate(self, prompt:str):
         response = requests.post(self.endpoint, 
                                  headers={"Authorization": f"Bearer {self.token}"},
                                  json = {
-                                     "model":model,
+                                     "model":self.model_name,
                                      "prompt": prompt,
                                      "stream": False
                                  })
@@ -19,17 +30,29 @@ class OllamaAPI():
 
         return response.json()
     
-class OpenAIAPI():
-    def __init__(self, endpoint:str, token:str):
-        self.endpoint = endpoint
-        self.token = token
+class OpenAIAPI(LLMApi):
+    def __init__(self, model_name:str):
+        super().__init__(model_name)
+        self.vendor = 'OpenAI'
 
-        self.client = OpenAI(api_key = token)
+        self.endpoint = os.environ.get('OPENAI_ENDPOINT')
+        self.token = os.environ.get('OPENAI_TOKEN')
 
-    def generate(self, model:str, prompt:str):
-        response = self.client.responses.create(
-                    model=model,
+    def generate(self, prompt:str):
+
+        client = OpenAI(api_key = self.token)
+
+        response = client.responses.create(
+                    model=self.model_name,
                     input=prompt
                 )
 
         return response.output_text
+    
+vendors = {
+    "OpenAI": OpenAIAPI,
+    "Ollama": OllamaAPI
+}
+    
+def get_llm_api(vendor:str, model_name:str) -> LLMApi:
+    return vendors[vendor](model_name)

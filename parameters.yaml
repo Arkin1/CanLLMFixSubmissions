@@ -1,0 +1,14 @@
+dataset:
+  path_to_submissions: 'data/dataset.csv'
+  path_to_test_data: 'data/codeforces/generated_tests'
+  path_to_contest_data : 'data/codeforces/data'
+  cache: True
+
+methods:
+  NaiveFixBugLLMMethod:
+      vendor: 'OpenAI'
+      model_name: 'gpt-5-nano'
+      
+  GenerateFromScratchLLMMethod:
+      vendor: 'OpenAI'
+      model_name: 'gpt-5-nano'

@@ -3,3 +3,5 @@ openai
 requests
 aiohttp
 datasets
+dotenv
+pyyaml

@@ -1,92 +1,103 @@
-import grequests
+
 import pandas as pd
 import datasets
-from utils import compile_and_test
 import base64
-
 from genai.utils import read_prompt
-from genai.Ollama import OllamaAPI
+from genai.endpoints import get_llm_api
+import hashlib
+import sys
 
-def create_index(ds, index_name):
-    index_c = {}
+from utils import ProblemsManager
+import os
+import dotenv
+import asyncio
+import logging
+import yaml
+import genai.methods as genai_methods
 
-    for idx, problem_id in enumerate(ds[index_name]):
-        if problem_id not in index_c:
-            index_c[problem_id] = []
+from data_models import Problem, Submission, GeneratedLLMResult, ResultAnalysis
 
-        index_c[problem_id].append(idx)
-    
-    return index_c
+logger = logging.getLogger(__name__)
 
+def load_dataset(path_to_submissions, 
+                 path_to_test_data, 
+                 path_to_contest_data, 
+                 cache_folder = 'data/cache',
+                 cache = True):
+    dataset_submissions = pd.read_csv(path_to_submissions)
+    dataset_submissions = dataset_submissions.set_index('submissions_id')
+    dataset_submissions['total_code_mod'] = dataset_submissions['code_additions'] + dataset_submissions['code_deletions']
+    dataset_submissions = dataset_submissions.sort_values('total_code_mod')
 
-dataset_submissions = pd.read_csv('dataset.csv')
-dataset_submissions = dataset_submissions.set_index('submissions_id')
-dataset_submissions['total_code_mod'] = dataset_submissions['code_additions'] + dataset_submissions['code_deletions']
+    dataset_submissions['sourceCode'] = dataset_submissions['sourceCode'].apply(lambda x: base64.b64decode(x).decode('utf-8'))
 
-dataset_submissions = dataset_submissions.sort_values('total_code_mod')
+    problems_ids = set(list(dataset_submissions['problem_id']))
 
-generated_tests_ds = datasets.load_dataset("data/codeforces/generated_tests")['test']
+    cache_key = str(hashlib.sha1("-".join(sorted(list(problems_ids))).encode()).hexdigest())
+    cache_path = os.path.join(cache_folder, cache_key)
 
-generated_tests_ds_index_mapping = create_index(generated_tests_ds, 'problem_id')
+    cache_problems_folder = os.path.join(cache_folder, cache_key, 'problems')
+    cache_tests_folder = os.path.join(cache_folder, cache_key, 'tests')
 
-all_contests = set([k.split('/')[0] for k in generated_tests_ds_index_mapping.keys()])
-
-problems_train = datasets.load_dataset("data/codeforces/data")['train']
-problems_test = datasets.load_dataset("data/codeforces/data")['test']
-
-problems_train_ds_index_mapping = create_index(problems_train, 'id')
-problems_test_ds_index_mapping = create_index(problems_test, 'id')
-
-ollama_api = OllamaAPI('','')
-
-for _, s in dataset_submissions.iterrows():
-    if s['AcceptedAnchor'] == -1 or s['verdict'] !='WRONG_ANSWER':
-        continue
-
-    if s['problem_id'] in problems_train_ds_index_mapping:
-        problem_data = problems_train[problems_train_ds_index_mapping[s['problem_id']][0]]
-    elif s['problem_id'] in problems_test_ds_index_mapping:
-        problem_data = problems_test[problems_test_ds_index_mapping[s['problem_id']][0]]
+    if cache and os.path.exists(cache_path):
+        problems = datasets.load_from_disk(cache_problems_folder)
+        generated_tests_ds = datasets.load_from_disk(cache_tests_folder)
     else:
-        continue
-    
-    source_code = base64.b64decode(s['sourceCode']).decode('utf-8')
-    anchor_source_code = base64.b64decode(dataset_submissions.loc[s['AcceptedAnchor']]['sourceCode']).decode('utf-8')
+        problems = datasets.load_dataset(path_to_contest_data)
+        problems = problems.filter(lambda x: x['id'] in problems_ids)
 
-    oficial_tests = problem_data['official_tests']
-
-    if not problem_data['official_tests_complete']:
-        if problem_data['generated_tests'] > 0:
-            for idx in generated_tests_ds_index_mapping[s['problem_id']]:
-                test_data = generated_tests_ds[idx]
-                oficial_tests.append({"input": test_data['input'], "output": test_data['output']})
-    
-    def check(response):
-        return all([result and 'compile' in result and result['compile']['code'] == 0 and result['run']['code'] == 0 and result['run']['stdout'].split()[0] == '1' for result in response])
-
-    response_anchor = compile_and_test(anchor_source_code, problem_data, oficial_tests, "http://host.docker.internal:2000")
-    r_anchor = check(response_anchor)
-    
-    response_wrong = compile_and_test(source_code, problem_data, oficial_tests, "http://host.docker.internal:2000")
-    r_wrong = check(response_wrong)
-
-    prompt = read_prompt('prompt_naive_fix_bug',
-                         problem_description = problem_data['description'],
-                         problem_input_format = problem_data['input_format'],
-                         problem_output_format = problem_data['output_format'],
-                         problem_example = problem_data['examples'],
-                         note = problem_data['note'],
-                         submission_verdict = s['verdict'],
-                         submission_code = source_code)
-    
-    response_generaged = ollama_api.generate('llama3.2:3b', prompt)['response']
-    
-
-    
-    print(f"original ({s['verdict']}) -> judge anchor ({'OK' if r_anchor == True else 'wrong/TLE/MLE'}) -> judge wrong ({'OK' if r_wrong== True else 'wrong/TLE/MLE'})")
+        generated_tests_ds = datasets.load_dataset(path_to_test_data)
+        generated_tests_ds = generated_tests_ds.filter(lambda x: x['problem_id'] in problems_ids)
         
+        if cache:
+            os.makedirs(cache_problems_folder)
+            os.makedirs(cache_tests_folder)
+
+            problems.save_to_disk(cache_problems_folder)
+            generated_tests_ds.save_to_disk(cache_tests_folder)
+
+            del problems
+            del generated_tests_ds
+            load_dataset(path_to_submissions, path_to_test_data, path_to_contest_data)
+
+    return dataset_submissions, ProblemsManager(problems, generated_tests_ds)
 
 
+async def main():
+    dotenv.load_dotenv(dotenv_path='.devcontainer/.env', override=True)
+    with open('parameters.yaml', 'r') as f:
+        config = yaml.load(f, Loader=yaml.SafeLoader)
+
+    submissions, problem_manager = load_dataset(**config['dataset'])
+
+    methods = [genai_methods.create_method(m_name, **m_args) for m_name, m_args in config['methods'].items()]
+
+    for idx, s in submissions.iterrows():
+        problem = problem_manager.get_info_problem(s['problem_id'])
+        submission = Submission(str(idx), s['sourceCode'], s['verdict'], None)
+        
+        results  = []
+        for method in methods:
+            try:
+                llm_result = method.predict(problem, submission)
+            except:
+                logger.error(f'Could not predict submission {submission.submission_id} for problem {problem.problem_id}. Skipping!')
+                results.append(None)
+            results.append(llm_result)
+        results = results
+
+
+
+if __name__ == "__main__":
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.WARNING)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    asyncio.run(main())
+    
+    
 
 
 
