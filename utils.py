@@ -5,7 +5,8 @@ import difflib
 import traceback
 import datasets
 import logging
-from data_models import Problem
+from data_models import Problem, Test
+from typing import Literal
 
 logger = logging.getLogger()
 
@@ -14,7 +15,7 @@ async def _fetch(session, url, data, headers: Optional[Dict[str, str]] = None):
         return await response.json()
 
 
-async def _compile_and_test_async(source_code:str, problem_data:dict, test_cases:list[dict], endpoint:str, programmingLanguage: str):
+async def _compile_and_test_async(source_code:str, problem_data:Problem, endpoint:str, programmingLanguage: str):
     if programmingLanguage == 'GNU C' or programmingLanguage == 'GNU C++' or programmingLanguage == 'MS C++':
         extension, piston_language = "cpp", "cf_c++"
     elif programmingLanguage == 'GNU C++0x':
@@ -32,7 +33,7 @@ async def _compile_and_test_async(source_code:str, problem_data:dict, test_cases
         raise Exception(f"Unsupported language {programmingLanguage}!")
     results = []
     async with aiohttp.ClientSession() as session:
-        for test_case in test_cases:
+        for test_case in problem_data.tests:
             payload = {
                 "language": piston_language,
                 "version": "*", 
@@ -43,20 +44,20 @@ async def _compile_and_test_async(source_code:str, problem_data:dict, test_cases
                     },
                     {
                         "name": "input.txt",
-                        "content": test_case['input']
+                        "content": test_case.input
                     },
                     {
                         "name": "correct_output.txt", 
-                        "content": test_case['output']
+                        "content": test_case.output
                     },
-                    *([{"name": "checker.py", "content": problem_data['generated_checker']}] if problem_data['generated_checker'] else []),
+                    *([{"name": "checker.py", "content": problem_data.generated_checker}] if problem_data.generated_checker else []),
                     {
                         "name": "grader_config",
                         "content": "\n".join(
                             f"{key}={value}" for key, value in {
-                                "TIME_LIMIT": problem_data['time_limit'],
-                                "MEMORY_LIMIT": problem_data['memory_limit'],
-                                "INPUT_MODE": problem_data['input_mode']
+                                "TIME_LIMIT": problem_data.time_limit,
+                                "MEMORY_LIMIT": problem_data.memory_limit,
+                                "INPUT_MODE": problem_data.input_mode
                             }.items()
                         )
                     }
@@ -70,8 +71,8 @@ async def _compile_and_test_async(source_code:str, problem_data:dict, test_cases
 
         return results
     
-async def compile_and_test(source_code:str, problem_data:dict, test_cases:list[dict], endpoint:str, programmingLanguage:str):
-    return await _compile_and_test_async(source_code, problem_data, test_cases, endpoint, programmingLanguage)
+async def compile_and_test(source_code:str, problem_data:Problem, endpoint:str, programmingLanguage:str):
+    return await _compile_and_test_async(source_code, problem_data, endpoint, programmingLanguage)
 
 def count_differences(source_a:str, source_b:str):
     def preprocess(s:str):
@@ -179,7 +180,8 @@ class RetryExecutionAsync():
             raise RetryException(f"Number of retries exceeded for context {self.context_name}!")
         
         return False
-    
+
+
 class ProblemsManager():
     def __init__(self, 
                  problems,
@@ -198,38 +200,74 @@ class ProblemsManager():
     def get_info_problem(self, problem_id:str) -> Problem:
         if problem_id in self.problems_train_ds_index_mapping:
             problem_info = self.problems_train[self.problems_train_ds_index_mapping[problem_id][0]]
-        else:
-            problem_info = self.problems_train[self.problems_train_ds_index_mapping[problem_id][0]]
+        elif problem_id in self.problems_test_ds_index_mapping:
+            problem_info = self.problems_test[self.problems_test_ds_index_mapping[problem_id][0]]
 
-        tests = problem_info['official_tests']
+        tests = [Test(input = t['input'], output = t['output']) for t in problem_info['official_tests']]
 
         if not problem_info['official_tests_complete']:
             if problem_info['generated_tests'] > 0:
                 for idx in self.generated_tests_ds_index_mapping[problem_id]:
                     test_data = self.generated_tests_ds[idx]
-                    tests.append({"input": test_data['input'], "output": test_data['output']})
+                    tests.append(Test(input = test_data['input'], output = test_data['output']))
 
-        return Problem(problem_info['id'],
-                       problem_info['description'],
-                       problem_info['input_format'],
-                       problem_info['output_format'],
-                       problem_info['examples'],
-                       problem_info['note'],
-                       tests)
+        return Problem(problem_id = problem_info['id'],
+                       description = problem_info['description'],
+                       input_format = problem_info['input_format'],
+                       output_format = problem_info['output_format'],
+                       examples = [Test(input = e['input'], output = e['output']) for e in problem_info['examples']],
+                       note = problem_info['note'],
+                       tests = tests,
+                       time_limit=problem_info['time_limit'],
+                       memory_limit=problem_info['memory_limit'],
+                       input_mode=problem_info['input_mode'],
+                       generated_checker=problem_info['generated_checker'])
+    
+    def is_problem_usable(self, problem_id:str) -> bool:
+        if problem_id in self.problems_train_ds_index_mapping:
+            problem_info = self.problems_train[self.problems_train_ds_index_mapping[problem_id][0]]
+        elif problem_id in self.problems_test_ds_index_mapping:
+            problem_info = self.problems_test[self.problems_test_ds_index_mapping[problem_id][0]]
+        else:
+            return False
 
-    async def evaluate_submission(self, problem_id:str, source_code:str, programming_language:str):
-        problem_info, tests = self.get_info_problem(problem_id)
+        if (problem_info['description'] == None or 
+           problem_info['input_format'] == None or
+           problem_info['output_format'] == None or 
+           problem_info['examples'] == None or
+           problem_info['official_tests'] == None or 
+           len(problem_info['official_tests']) == 0):
+            return False
+
+        return True
+        
+    async def evaluate_submission(self, problem_id:str, source_code:str, programming_language:str, evaluation_type: Literal['hard', 'soft']):
+        problem_info = self.get_info_problem(problem_id)
 
         with RetryExecutionAsync("problem_evaluator", 3, logger) as retry_async:
             async def eval():
-                response_anchor = await compile_and_test(source_code, problem_info, tests, self.endpoint_eval, programming_language)
-                r_anchor = self._check(response_anchor)
-                return r_anchor
+                response = await compile_and_test(source_code, problem_info, self.endpoint_eval, programming_language)
+                if evaluation_type == 'hard':
+                    score = self._hard_eval(response)
+                else:
+                    score = self._soft_eval(response)
+                return score
             
             return await retry_async(eval)
 
-    def _check(self, response):
+    def _hard_eval(self, response):
         return all([result and 'compile' in result and result['compile']['code'] == 0 and result['run']['code'] == 0 and result['run']['stdout'].split()[0] == '1' for result in response])
+
+    def _soft_eval(self, response):
+        results = [result and 'compile' in result and result['compile']['code'] == 0 and result['run']['code'] == 0 and result['run']['stdout'].split()[0] == '1' for result in response]
+        
+        num_correct = 0
+
+        for r in results:  
+            if r:
+                num_correct+=1
+
+        return  num_correct / len(results)
 
     def _create_indices(self):
         self.generated_tests_ds_index_mapping = self._create_index(self.generated_tests_ds, 'problem_id')

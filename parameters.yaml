@@ -12,3 +12,6 @@ methods:
   GenerateFromScratchLLMMethod:
       vendor: 'OpenAI'
       model_name: 'gpt-5-nano'
+
+output:
+  path: 'data/output'

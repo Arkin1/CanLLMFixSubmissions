@@ -1,44 +1,57 @@
-from dataclasses import dataclass
+from __future__ import annotations
+from pydantic import BaseModel
+from typing import Optional
 
-@dataclass
-class Test:
+class Test(BaseModel):
     input: str
     output: str
 
-@dataclass
-class Problem:
+    def __str__(self):
+        return f'#Input#: {self.input}\n #Output#: {self.output}\n'
+
+
+class Problem(BaseModel):
     problem_id: str
-    description: str 
+    description: str
     input_format: str
     output_format: str
-    examples: str
-    note: str
+    examples: list[Test]
+    note: Optional[str]
     tests: list[Test]
+    time_limit:float
+    memory_limit:float
+    input_mode:str
+    generated_checker:Optional[str]
 
-@dataclass
-class Submission:
+
+class Submission(BaseModel):
     submission_id: str
     source_code: str
+    programming_language: str
     verdict: str
-    ds_verdict: str
+    ds_verdict: bool
+    anchor: Submission = None
 
-@dataclass
-class ModelInfo:
+class ModelInfo(BaseModel):
     vendor: str
     model_name: str
 
-@dataclass
-class GeneratedLLMResult:
+class Loss(BaseModel):
+    test_loss: float
+    num_add_lines_loss: float
+    num_deleted_lines_loss: float
+    num_total_lines_loss: float
+    
+class GeneratedLLMResult(BaseModel):
     generated_result_id: str
     method_name: str
     llm_result: str
     source_code: str
-    ds_verdict: str
     model_info: ModelInfo
+    loss: Optional[Loss] = None
 
-@dataclass
-class ResultAnalysis:
-    problem: Problem
+class ResultAnalysis(BaseModel):
+    problem_id: str
     submission: Submission
     generated_results: list[GeneratedLLMResult]
 

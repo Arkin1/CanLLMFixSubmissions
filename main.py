@@ -6,6 +6,7 @@ from genai.utils import read_prompt
 from genai.endpoints import get_llm_api
 import hashlib
 import sys
+import json
 
 from utils import ProblemsManager
 import os
@@ -14,6 +15,8 @@ import asyncio
 import logging
 import yaml
 import genai.methods as genai_methods
+from genai.methods import LLMMethod
+from tqdm import tqdm
 
 from data_models import Problem, Submission, GeneratedLLMResult, ResultAnalysis
 
@@ -60,6 +63,11 @@ def load_dataset(path_to_submissions,
             del generated_tests_ds
             load_dataset(path_to_submissions, path_to_test_data, path_to_contest_data)
 
+    manager = ProblemsManager(problems, generated_tests_ds)
+
+    filter_subs = [manager.is_problem_usable(s['problem_id']) for _, s in dataset_submissions.iterrows()]
+    dataset_submissions = dataset_submissions[filter_subs]
+
     return dataset_submissions, ProblemsManager(problems, generated_tests_ds)
 
 
@@ -68,24 +76,63 @@ async def main():
     with open('parameters.yaml', 'r') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
+    output_path = config['output']['path']
+    os.makedirs(output_path, exist_ok=True)
+
     submissions, problem_manager = load_dataset(**config['dataset'])
 
-    methods = [genai_methods.create_method(m_name, **m_args) for m_name, m_args in config['methods'].items()]
+    methods:list[LLMMethod] = [genai_methods.create_method(m_name, **m_args) for m_name, m_args in config['methods'].items()]
 
-    for idx, s in submissions.iterrows():
-        problem = problem_manager.get_info_problem(s['problem_id'])
-        submission = Submission(str(idx), s['sourceCode'], s['verdict'], None)
+    filtered_submissions = submissions[(submissions['AcceptedAnchor'] != -1) & (submissions['verdict'] == 'WRONG_ANSWER')]
+
+    top_k = 5
+    variance_per_sample = 3
+    for idx, s in tqdm(list(filtered_submissions.iterrows())[:top_k]):
+        try:
+            problem = problem_manager.get_info_problem(s['problem_id'])
+        except Exception as e:
+            logger.error(f"Can't get problem {s['problem_id']}: {e}")
+            continue
+
+        s_idx = s['AcceptedAnchor']
+        s_a = submissions.loc[s_idx]
+
+        submission_anchor = Submission(submission_id = str(s_idx), 
+                                        source_code = s_a['sourceCode'], 
+                                        programming_language = s_a['programmingLanguage'], 
+                                        verdict = s_a['verdict'],
+                                        ds_verdict = await problem_manager.evaluate_submission(s_a['problem_id'], s_a['sourceCode'], s_a['programmingLanguage'], 'hard'))
         
-        results  = []
-        for method in methods:
-            try:
-                llm_result = method.predict(problem, submission)
-            except:
-                logger.error(f'Could not predict submission {submission.submission_id} for problem {problem.problem_id}. Skipping!')
-                results.append(None)
-            results.append(llm_result)
-        results = results
+        submission = Submission(submission_id = str(idx), 
+                                source_code = s['sourceCode'], 
+                                programming_language = s['programmingLanguage'], 
+                                verdict = s['verdict'],
+                                ds_verdict = await problem_manager.evaluate_submission(s['problem_id'], s['sourceCode'], s['programmingLanguage'], 'hard'),
+                                anchor = submission_anchor)
+        
+        if submission.ds_verdict == True:
+            logger.warning(f'Submission with id {submission.submission_id} should not pass the tests')
 
+        if submission.anchor.ds_verdict == False:
+            logger.warning(f'Submission anchor with id {submission.anchor.submission_id} should pass the tests')
+
+        for idx_variance in range(variance_per_sample):
+            results  = []
+            for method in methods:
+                try:
+                    llm_result = method.predict(problem, submission)
+                    llm_result.loss = await method.compute_loss(problem_manager, problem, submission, llm_result)
+                    results.append(llm_result)
+                except Exception as e:
+                    logger.error(f'Could not predict submission {submission.submission_id} for problem {problem.problem_id}. Reason: {e}. Skipping!')
+                    results.append(None)   
+
+            analysis_result = ResultAnalysis(problem_id = problem.problem_id, submission=submission, generated_results=results)
+            problem_output_path = os.path.join(output_path, problem.problem_id.replace('/', '_'))
+            os.makedirs(problem_output_path, exist_ok=True)
+
+            with open(os.path.join(problem_output_path, submission.submission_id + f'_{idx_variance}.json'), 'w', encoding='utf-8') as fp:
+                fp.write( analysis_result.model_dump_json(indent = 1))
 
 
 if __name__ == "__main__":
