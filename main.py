@@ -70,23 +70,16 @@ def load_dataset(path_to_submissions,
 
     return dataset_submissions, ProblemsManager(problems, generated_tests_ds)
 
-
-async def main():
-    dotenv.load_dotenv(dotenv_path='.devcontainer/.env', override=True)
-    with open('parameters.yaml', 'r') as f:
-        config = yaml.load(f, Loader=yaml.SafeLoader)
-
+async def predict(config):
     output_path = config['output']['path']
     os.makedirs(output_path, exist_ok=True)
 
     submissions, problem_manager = load_dataset(**config['dataset'])
-
+    top_k = config['settings']['top_k']
+    variance_per_sample = config['settings']['variance_per_sample']
     methods:list[LLMMethod] = [genai_methods.create_method(m_name, **m_args) for m_name, m_args in config['methods'].items()]
-
     filtered_submissions = submissions[(submissions['AcceptedAnchor'] != -1) & (submissions['verdict'] == 'WRONG_ANSWER')]
 
-    top_k = 5
-    variance_per_sample = 3
     for idx, s in tqdm(list(filtered_submissions.iterrows())[:top_k]):
         try:
             problem = problem_manager.get_info_problem(s['problem_id'])
@@ -134,6 +127,54 @@ async def main():
             with open(os.path.join(problem_output_path, submission.submission_id + f'_{idx_variance}.json'), 'w', encoding='utf-8') as fp:
                 fp.write( analysis_result.model_dump_json(indent = 1))
 
+
+def evaluate(config):
+    output_path = config['output']['path']
+
+    buckets_samples_analyses = {}
+    for root, _, files in os.walk(output_path):
+        for f in files:
+            with open(os.path.join(root, f), 'r', encoding='utf-8') as fp:
+                result_analysis = ResultAnalysis.model_validate_json(fp.read())
+                sub_id = result_analysis.submission.submission_id
+                if sub_id not in buckets_samples_analyses:
+                    buckets_samples_analyses[sub_id] = []
+                buckets_samples_analyses[sub_id].append(result_analysis)
+    
+    result = []
+    for sample_id, var_samples in buckets_samples_analyses.items():
+        result_sample = {"sample_id": sample_id,
+                         "problem_id": var_samples[0].problem_id}
+        metrics = {}
+        for s_result in var_samples:
+            for generated_result in s_result.generated_results:
+                if generated_result.method_name not in metrics:
+                    metrics[generated_result.method_name] = []
+
+                metrics[generated_result.method_name].append(generated_result.loss.model_dump())
+        
+        for m_name, values in metrics.items():
+            df = pd.DataFrame.from_records(values)
+            stats = df.describe()
+
+            for col in stats.columns:
+                for descriptor in stats.index:
+                        result_sample[m_name + '_' + col + '_' + descriptor] = stats.loc[descriptor, col].item()
+
+        result.append(result_sample)
+    
+    result_df = pd.DataFrame.from_records(result)
+    result_df.to_csv(os.path.join(output_path, 'result.csv'), index=False)
+
+
+async def main():
+    dotenv.load_dotenv(dotenv_path='.devcontainer/.env', override=True)
+    with open('parameters.yaml', 'r') as f:
+        config = yaml.load(f, Loader=yaml.SafeLoader)
+
+    #predict(config)
+
+    evaluate(config)
 
 if __name__ == "__main__":
     handler = logging.StreamHandler(sys.stdout)

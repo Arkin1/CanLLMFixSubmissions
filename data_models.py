@@ -30,7 +30,7 @@ class Submission(BaseModel):
     programming_language: str
     verdict: str
     ds_verdict: bool
-    anchor: Submission = None
+    anchor: Optional[Submission] = None
 
 class ModelInfo(BaseModel):
     vendor: str

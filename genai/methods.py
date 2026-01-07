@@ -50,7 +50,7 @@ class NaiveFixBugLLMMethod(LLMMethod):
             result = retry(f)
 
         return GeneratedLLMResult(generated_result_id = submission.submission_id + '_NaiveFixBugLLMMethod',
-                                  method_name = "_NaiveFixBugLLMMethod",
+                                  method_name = "NaiveFixBugLLMMethod",
                                   llm_result = result,
                                   source_code = CodeParser.extract_code(result),
                                   model_info = ModelInfo(vendor = self.llm.vendor, model_name = self.llm.model_name),

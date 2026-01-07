@@ -1,3 +1,6 @@
+settings:
+  top_k: 5
+  variance_per_sample: 3
 dataset:
   path_to_submissions: 'data/dataset.csv'
   path_to_test_data: 'data/codeforces/generated_tests'
