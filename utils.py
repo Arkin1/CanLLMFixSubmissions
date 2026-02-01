@@ -74,17 +74,14 @@ async def _compile_and_test_async(source_code:str, problem_data:Problem, endpoin
 async def compile_and_test(source_code:str, problem_data:Problem, endpoint:str, programmingLanguage:str):
     return await _compile_and_test_async(source_code, problem_data, endpoint, programmingLanguage)
 
+def preprocess_line(s:str):
+    s = s.replace('\t', '')
+    s = s.replace('\r', '')
+    s = s.strip()
+    return s
+
 def count_differences(source_a:str, source_b:str):
-    def preprocess(s:str):
-        return s.replace('\t', '')
-
-    lines_a = preprocess(source_a).splitlines()
-    lines_b = preprocess(source_b).splitlines()
-
-    lines_a = [l for l in lines_a if l != '']
-    lines_b = [l for l in lines_b if l != '']
-
-    diff_lines = difflib.unified_diff(lines_a, lines_b, "Original", "Modified")
+    diff_lines = difflib.unified_diff(source_a.splitlines(), source_b.splitlines(), "Original", "Modified")
 
     additions = 0
     deletions = 0

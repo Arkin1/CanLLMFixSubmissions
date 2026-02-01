@@ -31,4 +31,7 @@ class CodeParser():
         if len(found_code) == 0:
             found_code = CodeParser.re_code4.findall(s)
 
-        return found_code[0].replace('\\\\n', '\n')
+        if len(found_code) == 0:
+            return s.replace('\n', '\\\\n')
+        else:
+            return found_code[0].replace('\\\\n', '\n')

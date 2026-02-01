@@ -1,6 +1,7 @@
+experiment_name: "Test"
 settings:
   top_k: 5
-  variance_per_sample: 3
+  variance_per_sample: 1
 dataset:
   path_to_submissions: 'data/dataset.csv'
   path_to_test_data: 'data/codeforces/generated_tests'
@@ -16,5 +17,14 @@ methods:
       vendor: 'OpenAI'
       model_name: 'gpt-5-nano'
 
+  DSPyOptimizedLLMMethod:
+    vendor: 'OpenAI'
+    model_name: 'gpt-5-nano'
+  
+fit:
+  DSPyOptimizedLLMMethod:
+    vendor: 'OpenAI'
+    model_name: 'gpt-5-nano'
+
 output:
-  path: 'data/output'
+  path: 'data/output_test_val_5_fit_v2'

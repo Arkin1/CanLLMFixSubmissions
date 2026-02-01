@@ -26,6 +26,7 @@ class Problem(BaseModel):
 
 class Submission(BaseModel):
     submission_id: str
+    problem_id: str
     source_code: str
     programming_language: str
     verdict: str
@@ -41,6 +42,8 @@ class Loss(BaseModel):
     num_add_lines_loss: float
     num_deleted_lines_loss: float
     num_total_lines_loss: float
+    total_loss: float
+    total_normalized_loss: float
     
 class GeneratedLLMResult(BaseModel):
     generated_result_id: str

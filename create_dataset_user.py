@@ -7,6 +7,7 @@ from utils import count_differences, RetryExecution
 import logging
 import sys
 import os
+from utils import preprocess_line
 
 logger = logging.getLogger()
 
@@ -74,15 +75,22 @@ def create_dataset(user, submissions):
 
     number_additions = []
     number_deletions = []
+    number_lines_anchor = []
 
     for _, s in submissions_df.iterrows():
         if s['AcceptedAnchor'] == -1:
             number_additions.append(-1)
             number_deletions.append(-1)
+            number_lines_anchor.append(-1)
             continue
 
         s_sc = base64.b64decode(s['sourceCode']).decode('utf-8')
         t_sc = base64.b64decode(submissions_df.loc[s['AcceptedAnchor']]['sourceCode']).decode('utf-8')
+
+        lines_anchor = [preprocess_line(l) for l in t_sc.splitlines()]
+        lines_anchor = [l for l in lines_anchor if l != ""]
+
+        number_lines_anchor.append(len(lines_anchor))
 
         additions, deletions = count_differences(s_sc, t_sc)
 
@@ -92,21 +100,22 @@ def create_dataset(user, submissions):
 
     submissions_df['code_additions'] = number_additions
     submissions_df['code_deletions'] = number_deletions
+    submissions_df['number_lines_anchor'] = number_lines_anchor
 
     return submissions_df
 
 
-# if __name__ == '__main__':
-#     codeforces_api_key = os.getenv('CODEFORCES_API_KEY')
-#     codeforces_api_secret = os.getenv('CODEFORCES_API_SECRET')
+if __name__ == '__main__':
+    codeforces_api_key = os.getenv('CODEFORCES_API_KEY')
+    codeforces_api_secret = os.getenv('CODEFORCES_API_SECRET')
 
-#     handler = logging.StreamHandler(sys.stdout)
-#     handler.setLevel(logging.DEBUG)
-#     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-#     handler.setFormatter(formatter)
-#     logger.addHandler(handler)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
-#     submissions = get_submissions_user('Arkin', codeforces_api_key, codeforces_api_secret)
-#     submissions_df = create_dataset('Arkin', submissions)
+    submissions = get_submissions_user('Arkin', codeforces_api_key, codeforces_api_secret)
+    submissions_df = create_dataset('Arkin', submissions)
 
-#     submissions_df.to_csv('dataset.csv')
+    submissions_df.to_csv('dataset.csv')

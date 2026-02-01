@@ -17,10 +17,20 @@ import yaml
 import genai.methods as genai_methods
 from genai.methods import LLMMethod
 from tqdm import tqdm
+import mlflow
+import dspy
+from sklearn.model_selection import train_test_split
+from utils import preprocess_line
 
 from data_models import Problem, Submission, GeneratedLLMResult, ResultAnalysis
 
 logger = logging.getLogger(__name__)
+
+def clean_source_code(source_code):
+    num_lines_anchor = [preprocess_line(l) for l in source_code.splitlines()]
+    num_lines_anchor = [l for l in num_lines_anchor if l != '']
+
+    return "\n".join(num_lines_anchor)
 
 def load_dataset(path_to_submissions, 
                  path_to_test_data, 
@@ -33,6 +43,8 @@ def load_dataset(path_to_submissions,
     dataset_submissions = dataset_submissions.sort_values('total_code_mod')
 
     dataset_submissions['sourceCode'] = dataset_submissions['sourceCode'].apply(lambda x: base64.b64decode(x).decode('utf-8'))
+
+    dataset_submissions['sourceCode'] = dataset_submissions['sourceCode'].apply(clean_source_code)
 
     problems_ids = set(list(dataset_submissions['problem_id']))
 
@@ -77,10 +89,21 @@ async def predict(config):
     submissions, problem_manager = load_dataset(**config['dataset'])
     top_k = config['settings']['top_k']
     variance_per_sample = config['settings']['variance_per_sample']
-    methods:list[LLMMethod] = [genai_methods.create_method(m_name, **m_args) for m_name, m_args in config['methods'].items()]
+    methods:list[LLMMethod] = [genai_methods.create_method(m_name, problems_manager = problem_manager, **m_args) for m_name, m_args in config['methods'].items()]
     filtered_submissions = submissions[(submissions['AcceptedAnchor'] != -1) & (submissions['verdict'] == 'WRONG_ANSWER')]
 
-    for idx, s in tqdm(list(filtered_submissions.iterrows())[:top_k]):
+    problem_ids = filtered_submissions['problem_id']
+    problem_ids = list(set(problem_ids))
+
+    train_problem_ids, val_problem_ids = train_test_split(problem_ids, test_size = 0.75, random_state = 42)
+    train_problem_ids = set(train_problem_ids)
+    val_problem_ids = set(val_problem_ids)
+
+    submissions_train = filtered_submissions[filtered_submissions['problem_id'].isin(train_problem_ids)]
+    submissions_val = filtered_submissions[filtered_submissions['problem_id'].isin(val_problem_ids)]
+
+
+    for idx, s in tqdm(list(submissions_val.iterrows())[:top_k]):
         try:
             problem = problem_manager.get_info_problem(s['problem_id'])
         except Exception as e:
@@ -91,12 +114,14 @@ async def predict(config):
         s_a = submissions.loc[s_idx]
 
         submission_anchor = Submission(submission_id = str(s_idx), 
+                                        problem_id = problem.problem_id,
                                         source_code = s_a['sourceCode'], 
                                         programming_language = s_a['programmingLanguage'], 
                                         verdict = s_a['verdict'],
                                         ds_verdict = await problem_manager.evaluate_submission(s_a['problem_id'], s_a['sourceCode'], s_a['programmingLanguage'], 'hard'))
         
         submission = Submission(submission_id = str(idx), 
+                                problem_id = problem.problem_id,
                                 source_code = s['sourceCode'], 
                                 programming_language = s['programmingLanguage'], 
                                 verdict = s['verdict'],
@@ -113,12 +138,12 @@ async def predict(config):
             results  = []
             for method in methods:
                 try:
-                    llm_result = method.predict(problem, submission)
-                    llm_result.loss = await method.compute_loss(problem_manager, problem, submission, llm_result)
+                    llm_result = method.predict(submission)
+                    llm_result.loss = await method.compute_loss(submission.problem_id, submission.source_code, submission.anchor.source_code, llm_result.source_code)
                     results.append(llm_result)
                 except Exception as e:
                     logger.error(f'Could not predict submission {submission.submission_id} for problem {problem.problem_id}. Reason: {e}. Skipping!')
-                    results.append(None)   
+                    raise e
 
             analysis_result = ResultAnalysis(problem_id = problem.problem_id, submission=submission, generated_results=results)
             problem_output_path = os.path.join(output_path, problem.problem_id.replace('/', '_'))
@@ -166,15 +191,85 @@ def evaluate(config):
     result_df = pd.DataFrame.from_records(result)
     result_df.to_csv(os.path.join(output_path, 'result.csv'), index=False)
 
+async def fit(config):
+    # Enable full autologging
+    mlflow.dspy.autolog(
+        log_compiles=True,           # Track the optimization process
+        log_evals=True,              # Track evaluation results
+        log_traces_from_compile=True # Trace every LLM call during optimization
+    )
+
+    mlflow.set_experiment(config["experiment_name"])
+
+    output_path = config['output']['path']
+    os.makedirs(output_path, exist_ok=True)
+
+    submissions_df, problem_manager = load_dataset(**config['dataset'])
+
+    filtered_submissions = submissions_df[(submissions_df['AcceptedAnchor'] != -1) & (submissions_df['verdict'] == 'WRONG_ANSWER')]
+
+    filtered_submissions['ratio_mod'] = (filtered_submissions['code_deletions'] + filtered_submissions['code_additions']) / (2 * filtered_submissions['number_lines_anchor'])
+    filtered_submissions = filtered_submissions[filtered_submissions['ratio_mod'] < 0.1]
+
+    top_k = config['settings']['top_k']
+
+    submissions = []
+    for idx, s in tqdm(list(filtered_submissions.iterrows())[:top_k]):
+        try:
+            problem = problem_manager.get_info_problem(s['problem_id'])
+        except Exception as e:
+            logger.error(f"Can't get problem {s['problem_id']}: {e}")
+            continue
+
+        s_idx = s['AcceptedAnchor']
+        s_a = submissions_df.loc[s_idx]
+
+        submission_anchor = Submission(submission_id = str(s_idx),
+                                       problem_id = problem.problem_id, 
+                                        source_code = s_a['sourceCode'], 
+                                        programming_language = s_a['programmingLanguage'], 
+                                        verdict = s_a['verdict'],
+                                        ds_verdict = True)
+        
+        submission = Submission(submission_id = str(idx), 
+                                problem_id = problem.problem_id,
+                                source_code = s['sourceCode'], 
+                                programming_language = s['programmingLanguage'], 
+                                verdict = s['verdict'],
+                                ds_verdict = False,
+                                anchor = submission_anchor)
+        
+        if submission.ds_verdict == True:
+            logger.warning(f'Submission with id {submission.submission_id} should not pass the tests')
+
+        if submission.anchor.ds_verdict == False:
+            logger.warning(f'Submission anchor with id {submission.anchor.submission_id} should pass the tests')
+
+        submissions.append(submission)
+    
+    model:LLMMethod = [genai_methods.create_method(m_name, problems_manager = problem_manager, **m_args) for m_name, m_args in config['fit'].items()][0]
+    
+    problem_ids = [s.problem_id for s in submissions]
+    problem_ids = list(set(problem_ids))
+
+    train_problem_ids, val_problem_ids = train_test_split(problem_ids, test_size = 0.75, random_state = 42)
+    train_problem_ids = set(train_problem_ids)
+    val_problem_ids = set(val_problem_ids)
+
+    submissions_train = [s for s in submissions if s.problem_id in train_problem_ids]
+    submissions_val = [s for s in submissions if s.problem_id in train_problem_ids]
+
+    model.fit(submissions_train, submissions_val)
+    
 
 async def main():
     dotenv.load_dotenv(dotenv_path='.devcontainer/.env', override=True)
     with open('parameters.yaml', 'r') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
-    #predict(config)
-
-    evaluate(config)
+    await predict(config)
+    #evaluate(config)
+    #await fit(config)
 
 if __name__ == "__main__":
     handler = logging.StreamHandler(sys.stdout)

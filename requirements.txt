@@ -5,3 +5,4 @@ aiohttp
 datasets
 dotenv
 pyyaml
+dspy
