@@ -7,7 +7,6 @@ import logging
 import dspy
 from dspy_modules import BugFixerSignature
 import asyncio
-from multipledispatch import dispatch
 from utils import preprocess_line
 
 import nest_asyncio

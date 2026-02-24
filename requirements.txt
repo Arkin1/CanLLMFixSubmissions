@@ -6,3 +6,6 @@ datasets
 dotenv
 pyyaml
 dspy
+mlflow
+scikit-learn
+nest_asyncio

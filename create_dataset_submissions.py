@@ -1,44 +1,16 @@
 import pandas as pd
-import time
-import requests
-import hashlib
 import base64
-from utils import count_differences, RetryExecution
+from utils import count_differences
 import logging
-import sys
-import os
 from utils import preprocess_line
+from glob import glob
+import json
+import os
+from utils import get_codeforces_r1_dataset
+from tqdm import tqdm
+
 
 logger = logging.getLogger()
-
-def get_submissions_user(user_id, codeforces_api_key, codeforces_api_secret):
-    idx = 1
-    count = 10000
-    submissions = []
-
-    with RetryExecution("GetSubmissionsUser", 3, logger) as retry:
-        while True:
-            def get_submission_view():
-                time.sleep(2)
-                my_time = time.time_ns() // 1000000000
-                
-                hsh = f'x1y1x2/user.status?apiKey={codeforces_api_key}&count={count}&from={idx}&handle={user_id}&includeSources=true&time={my_time}#{codeforces_api_secret}'
-                hsh = hashlib.sha512(hsh.encode('utf-8')).hexdigest()
-                response = requests.get(f'https://codeforces.com/api/user.status?apiKey={codeforces_api_key}&count={count}&from={idx}&handle={user_id}&includeSources=true&time={my_time}&apiSig=x1y1x2{hsh}')
-                response.raise_for_status()
-
-                response = response.json()
-                submissions_view = response['result']
-                return submissions_view
-            
-            submissions_view = retry(get_submission_view)
-            submissions.extend(submissions_view)
-            if len(submissions_view) < count:
-                break
-            else:
-                idx+=count
-    
-    return submissions
 
 def _determine_anchor(group):
     group_creation_dates = [(idx, e['verdict'], e['creationTimeSeconds']) for idx, e in group.iterrows()]
@@ -60,7 +32,33 @@ def _determine_anchor(group):
 
     return group
 
-def create_dataset(user, submissions):
+async def _append_submission_status_r1(dataset:pd.DataFrame, path_to_test_files_data:str, path_to_contest_data:str):
+    logger.info(f"Marking submissions that can be used with Codeforces R1 Dataset and if they pass the test suite or not...")
+    problems_ids = set(list(dataset['problem_id']))
+    manager = get_codeforces_r1_dataset(problems_ids, path_to_contest_data, path_to_test_files_data)
+
+    passes_r1_tests = []
+    is_problem_usable = []
+
+    for _, submission in tqdm(list(dataset.iterrows())):
+        problem_id = submission['problem_id']
+        source_code =  base64.b64decode(submission['sourceCode']).decode('utf-8')
+        programming_language = submission['programmingLanguage']
+
+        problem_usable = manager.is_problem_usable(problem_id)
+        is_problem_usable.append(problem_usable)
+        if problem_usable:
+            passes_r1_tests.append(await manager.evaluate_submission(problem_id, source_code, programming_language, 'hard'))
+        else:
+            passes_r1_tests.append(False)
+
+    dataset['is_problem_usable'] = is_problem_usable
+    dataset['passes_r1_tests'] = passes_r1_tests
+
+
+def _create_dataset_per_user(user, submissions):
+    logger.info(f"Computing anchor submissions for {user}...")
+
     submissions_df = [{"user": user,
                     "submissions_id": s["id"],
                    "problem_id": f"{s['problem']['contestId']}/{s['problem']['index']}",
@@ -97,25 +95,27 @@ def create_dataset(user, submissions):
         number_additions.append(additions)
         number_deletions.append(deletions)
 
-
     submissions_df['code_additions'] = number_additions
     submissions_df['code_deletions'] = number_deletions
     submissions_df['number_lines_anchor'] = number_lines_anchor
 
     return submissions_df
 
+async def create_dataset(path_submissions:str, path_to_test_files_data:str, path_to_contest_data:str, output_path:str = "data/dataset.csv"):
+    logger.info("Creating dataset...")
 
-if __name__ == '__main__':
-    codeforces_api_key = os.getenv('CODEFORCES_API_KEY')
-    codeforces_api_secret = os.getenv('CODEFORCES_API_SECRET')
+    submissions_dfs = []
+    for submissions_path in glob(f"{path_submissions}/*.json"):
+        with open(submissions_path, 'r', encoding='utf-8') as fp:
+            submissions = json.load(fp)
+        
+        user_name = os.path.basename(submissions_path).split('_')
+        user_name = "_".join(user_name[:-1])
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+        submissions_dfs.append(_create_dataset_per_user(user_name, submissions))
 
-    submissions = get_submissions_user('Arkin', codeforces_api_key, codeforces_api_secret)
-    submissions_df = create_dataset('Arkin', submissions)
+    submissions_dfs = pd.concat(submissions_dfs)
 
-    submissions_df.to_csv('dataset.csv')
+    await _append_submission_status_r1(submissions_dfs, path_to_test_files_data, path_to_contest_data)
+
+    submissions_dfs.to_csv(output_path)

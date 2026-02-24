@@ -7,14 +7,15 @@ import datasets
 import logging
 from data_models import Problem, Test
 from typing import Literal
+import hashlib
+import os
 
 logger = logging.getLogger()
 
 async def _fetch(session, url, data, headers: Optional[Dict[str, str]] = None):
     async with session.post(url, json = data, headers =headers) as response:
         return await response.json()
-
-
+    
 async def _compile_and_test_async(source_code:str, problem_data:Problem, endpoint:str, programmingLanguage: str):
     if programmingLanguage == 'GNU C' or programmingLanguage == 'GNU C++' or programmingLanguage == 'MS C++':
         extension, piston_language = "cpp", "cf_c++"
@@ -29,8 +30,8 @@ async def _compile_and_test_async(source_code:str, problem_data:Problem, endpoin
     elif programmingLanguage == 'C++20 (GCC 11-64)' or programmingLanguage == 'C++20 (GCC 13-64)' or programmingLanguage == 'Clang++20 Diagnostics':
         extension, piston_language = "cpp", "cf_c++20"
     else:
-        print(f"Unsupported language {programmingLanguage}!")
-        raise Exception(f"Unsupported language {programmingLanguage}!")
+        logger.warning(f"Unsupported language {programmingLanguage}! Trying with cpp.")
+        extension, piston_language = "cpp", "cf_c++"
     results = []
     async with aiohttp.ClientSession() as session:
         for test_case in problem_data.tests:
@@ -177,6 +178,50 @@ class RetryExecutionAsync():
             raise RetryException(f"Number of retries exceeded for context {self.context_name}!")
         
         return False
+    
+
+def get_codeforces_r1_dataset(problems_ids:list[str], 
+                              path_to_contest_data:str, 
+                              path_to_test_files_data:str, 
+                              cache:bool = True,
+                              cache_folder = 'data/cache'):
+    
+    logger.info(f"Using cache {cache} and saving to {cache_folder}")
+    
+    cache_key = str(hashlib.sha1("-".join(sorted(list(problems_ids))).encode()).hexdigest())
+    cache_path = os.path.join(cache_folder, cache_key)
+
+    cache_problems_folder = os.path.join(cache_folder, cache_key, 'problems')
+    cache_tests_folder = os.path.join(cache_folder, cache_key, 'tests')
+
+    if cache and os.path.exists(cache_path):
+        logger.info("Loading cache problems and test files...")
+        problems = datasets.load_from_disk(cache_problems_folder)
+        generated_tests_ds = datasets.load_from_disk(cache_tests_folder)
+
+        return ProblemsManager(problems, generated_tests_ds)
+    else:
+        logger.info("Cache doesn't exist!")
+        problems = datasets.load_dataset(path_to_contest_data)
+        problems = problems.filter(lambda x: x['id'] in problems_ids)
+
+        generated_tests_ds = datasets.load_dataset(path_to_test_files_data)
+        generated_tests_ds = generated_tests_ds.filter(lambda x: x['problem_id'] in problems_ids)
+        
+        if cache:
+            logger.info("Caching problems...")
+            os.makedirs(cache_problems_folder)
+            os.makedirs(cache_tests_folder)
+
+            problems.save_to_disk(cache_problems_folder)
+            generated_tests_ds.save_to_disk(cache_tests_folder)
+
+            del problems
+            del generated_tests_ds
+            return get_codeforces_r1_dataset(problems_ids, path_to_contest_data, path_to_test_files_data, cache, cache_folder)
+        else:
+            logger.info("Caching is disabled")
+            return ProblemsManager(problems, generated_tests_ds)
 
 
 class ProblemsManager():
