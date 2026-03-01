@@ -51,6 +51,9 @@ class GeneratedLLMResult(BaseModel):
     llm_result: str
     source_code: str
     model_info: ModelInfo
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
     loss: Optional[Loss] = None
 
 class ResultAnalysis(BaseModel):

@@ -29,12 +29,12 @@ def clean_source_code(source_code):
 
     return "\n".join(num_lines_anchor)
 
-def load_dataset(path_to_submissions, 
-                 path_to_test_files_data, 
+def load_dataset(path_to_dataset, 
+                 path_to_test_data, 
                  path_to_contest_data, 
                  cache_folder = 'data/cache',
                  cache = True):
-    dataset_submissions = pd.read_csv(path_to_submissions)
+    dataset_submissions = pd.read_csv(path_to_dataset)
     dataset_submissions = dataset_submissions.set_index('submissions_id')
     dataset_submissions['total_code_mod'] = dataset_submissions['code_additions'] + dataset_submissions['code_deletions']
     dataset_submissions = dataset_submissions.sort_values('total_code_mod')
@@ -44,16 +44,18 @@ def load_dataset(path_to_submissions,
 
     problems_ids = set(list(dataset_submissions['problem_id']))
 
-    manager = get_codeforces_r1_dataset(problems_ids, path_to_contest_data, path_to_test_files_data)
+    manager = get_codeforces_r1_dataset(problems_ids, path_to_contest_data, path_to_test_data)
 
     dataset_submissions = dataset_submissions[(dataset_submissions['is_problem_usable'] & 
                                                (((dataset_submissions['verdict'] == "OK") & (dataset_submissions['passes_r1_tests'] == True)) | 
                                                 (((dataset_submissions['verdict'] != "OK") & (dataset_submissions['passes_r1_tests'] == False)))))
                                               ]
     dataset_submissions['has_anchor'] = dataset_submissions.apply(lambda f: (f['AcceptedAnchor'] == -1 or 
-                                                                            (f['AcceptedAnchor'] != -1 and f['AcceptedAnchor'] in dataset_submissions)))
+                                                                            (f['AcceptedAnchor'] != -1 and f['AcceptedAnchor'] in dataset_submissions.index)), axis = 1)
     dataset_submissions = dataset_submissions[dataset_submissions['has_anchor']]
     dataset_submissions = dataset_submissions.drop('has_anchor', axis = 1)
+    dataset_submissions = dataset_submissions.loc[~dataset_submissions.index.duplicated(keep='first'), :]
+    
     return dataset_submissions, manager
 
 def df_to_submissions(submissions_df:pd.DataFrame, problem_manager:ProblemsManager) -> list[Submission]:
@@ -82,7 +84,7 @@ def df_to_submissions(submissions_df:pd.DataFrame, problem_manager:ProblemsManag
                                 source_code = s['sourceCode'], 
                                 programming_language = s['programmingLanguage'], 
                                 verdict = s['verdict'],
-                                ds_verdict = s_a['passes_r1_tests'],
+                                ds_verdict = s['passes_r1_tests'],
                                 anchor = submission_anchor)
         
         if submission.ds_verdict == True:
@@ -95,7 +97,7 @@ def df_to_submissions(submissions_df:pd.DataFrame, problem_manager:ProblemsManag
     return submissions
 
 async def create_dataset_step(config):
-    dataset_config = config['dataset']
+    dataset_config = config['create_dataset']
     await create_dataset(dataset_config['path_to_submissions'], dataset_config['path_to_test_data'], dataset_config['path_to_contest_data'])
 
 async def predict_step(config):
@@ -107,12 +109,15 @@ async def predict_step(config):
     variance_per_sample = config['settings']['variance_per_sample']
     methods:list[LLMMethod] = [genai_methods.create_method(m_name, problems_manager = problem_manager, **m_args) for m_name, m_args in config['methods'].items()]
     
+    print("Preprocessing data...")
     if top_k:
-        submissions = df_to_submissions(submissions_df, problem_manager)[:top_k]
+        submissions = df_to_submissions(submissions_df, problem_manager)
+        submissions = submissions[:top_k]
     else:
         submissions = df_to_submissions(submissions_df, problem_manager) 
 
-    for submission in submissions:
+    print("Predicting...")
+    for submission in tqdm(submissions):
         for idx_variance in range(variance_per_sample):
             results  = []
             for method in methods:
@@ -125,7 +130,7 @@ async def predict_step(config):
                     raise e
 
             analysis_result = ResultAnalysis(problem_id = submission.problem_id, submission=submission, generated_results=results)
-            problem_output_path = os.path.join(output_path, submission.problem_id.problem_id.replace('/', '_'))
+            problem_output_path = os.path.join(output_path, submission.problem_id.replace('/', '_'))
             os.makedirs(problem_output_path, exist_ok=True)
 
             with open(os.path.join(problem_output_path, submission.submission_id + f'_{idx_variance}.json'), 'w', encoding='utf-8') as fp:
@@ -138,13 +143,14 @@ def evaluate_step(config):
     buckets_samples_analyses = {}
     for root, _, files in os.walk(output_path):
         for f in files:
-            with open(os.path.join(root, f), 'r', encoding='utf-8') as fp:
-                result_analysis = ResultAnalysis.model_validate_json(fp.read())
-                sub_id = result_analysis.submission.submission_id
-                if sub_id not in buckets_samples_analyses:
-                    buckets_samples_analyses[sub_id] = []
-                buckets_samples_analyses[sub_id].append(result_analysis)
-    
+            if f.endswith('.json'):
+                with open(os.path.join(root, f), 'r', encoding='utf-8') as fp:
+                    result_analysis = ResultAnalysis.model_validate_json(fp.read())
+                    sub_id = result_analysis.submission.submission_id
+                    if sub_id not in buckets_samples_analyses:
+                        buckets_samples_analyses[sub_id] = []
+                    buckets_samples_analyses[sub_id].append(result_analysis)
+        
     result = []
     for sample_id, var_samples in buckets_samples_analyses.items():
         result_sample = {"sample_id": sample_id,
@@ -187,8 +193,9 @@ async def fit_step(config):
 
     submissions_df, problem_manager = load_dataset(**config['dataset'])
 
-    filtered_submissions = submissions_df[((submissions_df['AcceptedAnchor'] != -1) & (submissions_df['verdict'] == 'WRONG_ANSWER')) | (submissions_df['AcceptedAnchor'] == -1)]
-
+    #filtered_submissions = submissions_df[((submissions_df['AcceptedAnchor'] != -1) & (submissions_df['verdict'] == 'WRONG_ANSWER')) | (submissions_df['AcceptedAnchor'] == -1)]
+    
+    filtered_submissions  = submissions_df
     filtered_submissions['ratio_mod'] = (filtered_submissions['code_deletions'] + filtered_submissions['code_additions']) / (2 * filtered_submissions['number_lines_anchor'])
     filtered_submissions = filtered_submissions[(filtered_submissions['ratio_mod'] < 0.1) | (filtered_submissions['AcceptedAnchor'] == -1)]
     
@@ -202,7 +209,7 @@ async def fit_step(config):
     problem_ids = [s.problem_id for s in submissions]
     problem_ids = list(set(problem_ids))
 
-    train_problem_ids, val_problem_ids = train_test_split(problem_ids, test_size = 0.75, random_state = 42)
+    train_problem_ids, val_problem_ids = train_test_split(problem_ids, test_size = 0.25, random_state = 42)
     train_problem_ids = set(train_problem_ids)
     val_problem_ids = set(val_problem_ids)
 
@@ -224,7 +231,7 @@ async def main():
     with open('parameters.yaml', 'r') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
-    args = parser.parse_args(["--create-dataset"])
+    args = parser.parse_args(["--fit"])
 
     if args.create_dataset:
         await create_dataset_step(config)
