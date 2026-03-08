@@ -2,7 +2,7 @@
 import pandas as pd
 import base64
 import sys
-from utils import ProblemsManager, attach_dif_counts
+from utils import ProblemsManager, attach_dif_data
 import os
 import dotenv
 import asyncio
@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 def load_dataset(path_to_dataset, 
                  path_to_test_data, 
-                 path_to_contest_data, 
+                 path_to_contest_data,
+                 code_mod_ratio_threshold,
                  cache_folder = 'data/cache',
                  cache = True):
     dataset_submissions = pd.read_csv(path_to_dataset)
@@ -37,7 +38,7 @@ def load_dataset(path_to_dataset,
 
     manager = get_codeforces_r1_dataset(problems_ids, path_to_contest_data, path_to_test_data)
 
-    dataset_submissions = dataset_submissions[~((dataset_submissions['verdict'] != 'OK') & dataset_submissions['AcceptedAnchor']==-1)]
+    dataset_submissions = dataset_submissions[~((dataset_submissions['verdict'] != 'OK') & (dataset_submissions['AcceptedAnchor']==-1))]
 
     dataset_submissions = dataset_submissions[(dataset_submissions['is_problem_usable'] & 
                                                (((dataset_submissions['verdict'] == "OK") & (dataset_submissions['passes_r1_tests'] == True)) | 
@@ -56,7 +57,9 @@ def load_dataset(path_to_dataset,
                                         "MEMORY_LIMIT_EXCEEDED",
                                         "COMPILATION_ERROR"])]
     
-    attach_dif_counts(dataset_submissions)
+    attach_dif_data(dataset_submissions)
+
+    dataset_submissions = dataset_submissions[dataset_submissions['code_mod_ratio'] <= code_mod_ratio_threshold]
     
     return dataset_submissions, manager
 

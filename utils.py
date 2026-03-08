@@ -106,9 +106,11 @@ def count_differences(source_a:str, source_b:str):
 
     return additions, deletions
 
-def attach_dif_counts(submissions_df):
+def attach_dif_data(submissions_df):
     number_additions = []
+    addition_ratio = []
     number_deletions = []
+    deletion_ratio = []
     number_lines = []
 
     for _, s in submissions_df.iterrows():
@@ -117,7 +119,10 @@ def attach_dif_counts(submissions_df):
 
         if s['AcceptedAnchor'] == -1:
             number_additions.append(0)
+            addition_ratio.append(0)
+
             number_deletions.append(0)
+            deletion_ratio.append(0)    
             continue
         
         t_sc = submissions_df.loc[s['AcceptedAnchor']]['sourceCode']
@@ -127,9 +132,19 @@ def attach_dif_counts(submissions_df):
         number_additions.append(additions)
         number_deletions.append(deletions)
 
+        deletion_ratio.append(deletions / max(1, len(s_sc.splitlines())))
+        addition_ratio.append(additions / max(1, len(t_sc.splitlines())))
+        
     submissions_df['code_additions'] = number_additions
     submissions_df['code_deletions'] = number_deletions
-    submissions_df['number_lines_anchor'] = number_lines
+    submissions_df['code_addition_ratio'] = addition_ratio
+    submissions_df['code_deletion_ratio'] = deletion_ratio
+
+    if addition_ratio == 0 or deletion_ratio == 0:
+        submissions_df['code_mod_ratio'] = 0
+    else:
+        submissions_df['code_mod_ratio'] =  2 / (1/submissions_df['code_addition_ratio'] + 1/submissions_df['code_deletion_ratio'])
+    submissions_df['number_lines'] = number_lines
 
 class RetryContext():
     def __init__(self, max_number_times, logger = None):

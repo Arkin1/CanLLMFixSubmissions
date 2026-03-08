@@ -6,6 +6,7 @@ dataset:
   path_to_dataset: "data/dataset.csv"
   path_to_test_data: 'data/codeforces/generated_tests'
   path_to_contest_data : 'data/codeforces/data'
+  code_mod_ratio_threshold: 0.5
   cache: True
 
 create_dataset:
