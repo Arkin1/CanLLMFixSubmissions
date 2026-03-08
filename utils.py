@@ -1,3 +1,5 @@
+import base64
+
 import aiohttp
 import asyncio
 from typing import Optional, Dict
@@ -75,14 +77,22 @@ async def _compile_and_test_async(source_code:str, problem_data:Problem, endpoin
 async def compile_and_test(source_code:str, problem_data:Problem, endpoint:str, programmingLanguage:str):
     return await _compile_and_test_async(source_code, problem_data, endpoint, programmingLanguage)
 
-def preprocess_line(s:str):
-    s = s.replace('\t', '')
-    s = s.replace('\r', '')
-    s = s.strip()
-    return s
+def clean_source_code(source_code):
+    lines = [l for l in source_code.splitlines()]
+    lines = [l for l in lines if l != '']
+
+    return "\n".join(lines)
 
 def count_differences(source_a:str, source_b:str):
-    diff_lines = difflib.unified_diff(source_a.splitlines(), source_b.splitlines(), "Original", "Modified")
+    def preprocess_line(s:str):
+        s = s.replace('\t', '')
+        s = s.replace('\r', '')
+        s = s.strip()
+        return s
+    diff_lines = difflib.unified_diff([preprocess_line(l) for l in source_a.splitlines()], 
+                                      [preprocess_line(l) for l in source_b.splitlines()], 
+                                      "Original", 
+                                      "Modified")
 
     additions = 0
     deletions = 0
@@ -95,6 +105,31 @@ def count_differences(source_a:str, source_b:str):
             deletions += 1
 
     return additions, deletions
+
+def attach_dif_counts(submissions_df):
+    number_additions = []
+    number_deletions = []
+    number_lines = []
+
+    for _, s in submissions_df.iterrows():
+        s_sc = s['sourceCode']
+        number_lines.append(len(s_sc.splitlines()))
+
+        if s['AcceptedAnchor'] == -1:
+            number_additions.append(0)
+            number_deletions.append(0)
+            continue
+        
+        t_sc = submissions_df.loc[s['AcceptedAnchor']]['sourceCode']
+
+        additions, deletions = count_differences(s_sc, t_sc)
+
+        number_additions.append(additions)
+        number_deletions.append(deletions)
+
+    submissions_df['code_additions'] = number_additions
+    submissions_df['code_deletions'] = number_deletions
+    submissions_df['number_lines_anchor'] = number_lines
 
 class RetryContext():
     def __init__(self, max_number_times, logger = None):

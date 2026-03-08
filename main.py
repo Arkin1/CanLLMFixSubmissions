@@ -1,10 +1,8 @@
 
 import pandas as pd
 import base64
-from genai.utils import read_prompt
-from genai.endpoints import get_llm_api
 import sys
-from utils import ProblemsManager
+from utils import ProblemsManager, attach_dif_counts
 import os
 import dotenv
 import asyncio
@@ -15,19 +13,14 @@ from genai.methods import LLMMethod
 from tqdm import tqdm
 import mlflow
 from sklearn.model_selection import train_test_split
-from utils import preprocess_line, get_codeforces_r1_dataset
+from utils import  get_codeforces_r1_dataset
 from create_dataset_submissions import create_dataset
 import argparse
+from utils import clean_source_code
 
 from data_models import Problem, Submission, GeneratedLLMResult, ResultAnalysis
 
 logger = logging.getLogger(__name__)
-
-def clean_source_code(source_code):
-    num_lines_anchor = [preprocess_line(l) for l in source_code.splitlines()]
-    num_lines_anchor = [l for l in num_lines_anchor if l != '']
-
-    return "\n".join(num_lines_anchor)
 
 def load_dataset(path_to_dataset, 
                  path_to_test_data, 
@@ -36,8 +29,6 @@ def load_dataset(path_to_dataset,
                  cache = True):
     dataset_submissions = pd.read_csv(path_to_dataset)
     dataset_submissions = dataset_submissions.set_index('submissions_id')
-    dataset_submissions['total_code_mod'] = dataset_submissions['code_additions'] + dataset_submissions['code_deletions']
-    dataset_submissions = dataset_submissions.sort_values('total_code_mod')
 
     dataset_submissions['sourceCode'] = dataset_submissions['sourceCode'].apply(lambda x: base64.b64decode(x).decode('utf-8'))
     dataset_submissions['sourceCode'] = dataset_submissions['sourceCode'].apply(clean_source_code)
@@ -45,6 +36,8 @@ def load_dataset(path_to_dataset,
     problems_ids = set(list(dataset_submissions['problem_id']))
 
     manager = get_codeforces_r1_dataset(problems_ids, path_to_contest_data, path_to_test_data)
+
+    dataset_submissions = dataset_submissions[~((dataset_submissions['verdict'] != 'OK') & dataset_submissions['AcceptedAnchor']==-1)]
 
     dataset_submissions = dataset_submissions[(dataset_submissions['is_problem_usable'] & 
                                                (((dataset_submissions['verdict'] == "OK") & (dataset_submissions['passes_r1_tests'] == True)) | 
@@ -55,6 +48,15 @@ def load_dataset(path_to_dataset,
     dataset_submissions = dataset_submissions[dataset_submissions['has_anchor']]
     dataset_submissions = dataset_submissions.drop('has_anchor', axis = 1)
     dataset_submissions = dataset_submissions.loc[~dataset_submissions.index.duplicated(keep='first'), :]
+
+    dataset_submissions = dataset_submissions[dataset_submissions["verdict"].isin(["OK", 
+                                        "WRONG_ANSWER", 
+                                        "TIME_LIMIT_EXCEEDED", 
+                                        "RUNTIME_ERROR",
+                                        "MEMORY_LIMIT_EXCEEDED",
+                                        "COMPILATION_ERROR"])]
+    
+    attach_dif_counts(dataset_submissions)
     
     return dataset_submissions, manager
 
@@ -169,7 +171,9 @@ def evaluate_step(config):
 
             for col in stats.columns:
                 for descriptor in stats.index:
-                        result_sample[m_name + '_' + col + '_' + descriptor] = stats.loc[descriptor, col].item()
+                        if descriptor == 'mean' or descriptor == 'std' or descriptor == 'min' or descriptor=='max':
+                            if col == 'total_loss':
+                                result_sample[m_name + '_' + col + '_' + descriptor] = stats.loc[descriptor, col].item()
 
         result.append(result_sample)
     
@@ -231,7 +235,7 @@ async def main():
     with open('parameters.yaml', 'r') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
-    args = parser.parse_args(["--fit"])
+    args = parser.parse_args(["--evaluate"])
 
     if args.create_dataset:
         await create_dataset_step(config)

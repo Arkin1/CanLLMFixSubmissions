@@ -1,6 +1,6 @@
 experiment_name: "Test"
 settings:
-  top_k: 100
+  top_k: 50
   variance_per_sample: 3
 dataset:
   path_to_dataset: "data/dataset.csv"
@@ -35,6 +35,7 @@ fit:
     vendor: 'OpenAI'
     model_name: 'gpt-5-nano'
     cache: False
+    model_output_path: 'data/models/optimized_model_gepa.json'
 
 output:
   path: 'data/output_test_val_5_fit_v3'

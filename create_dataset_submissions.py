@@ -1,8 +1,6 @@
 import pandas as pd
 import base64
-from utils import count_differences
 import logging
-from utils import preprocess_line
 from glob import glob
 import json
 import os
@@ -70,34 +68,6 @@ def _create_dataset_per_user(user, submissions):
 
     submissions_df = submissions_df.groupby(['problem_id']).apply(_determine_anchor)
     submissions_df = submissions_df.set_index('submissions_id')
-
-    number_additions = []
-    number_deletions = []
-    number_lines_anchor = []
-
-    for _, s in submissions_df.iterrows():
-        if s['AcceptedAnchor'] == -1:
-            number_additions.append(-1)
-            number_deletions.append(-1)
-            number_lines_anchor.append(-1)
-            continue
-
-        s_sc = base64.b64decode(s['sourceCode']).decode('utf-8')
-        t_sc = base64.b64decode(submissions_df.loc[s['AcceptedAnchor']]['sourceCode']).decode('utf-8')
-
-        lines_anchor = [preprocess_line(l) for l in t_sc.splitlines()]
-        lines_anchor = [l for l in lines_anchor if l != ""]
-
-        number_lines_anchor.append(len(lines_anchor))
-
-        additions, deletions = count_differences(s_sc, t_sc)
-
-        number_additions.append(additions)
-        number_deletions.append(deletions)
-
-    submissions_df['code_additions'] = number_additions
-    submissions_df['code_deletions'] = number_deletions
-    submissions_df['number_lines_anchor'] = number_lines_anchor
 
     return submissions_df
 

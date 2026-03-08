@@ -7,7 +7,7 @@ import logging
 import dspy
 from dspy_modules import BugFixerSignature
 import asyncio
-from utils import preprocess_line
+from utils import clean_source_code
 from typing import Optional
 
 import nest_asyncio
@@ -28,6 +28,7 @@ class LLMMethod():
         pass
     
     async def compute_loss(self, problem_id:str, buggy_code:str, correct_code:str, generated_code:str):
+        generated_code = clean_source_code(generated_code)
         test_loss = await self.problems_manager.evaluate_submission(problem_id, generated_code, "GNU C++", 'soft')
         num_add_baseline, num_del_baseline = count_differences(buggy_code, correct_code)
         num_add_generated, num_del_generated = count_differences(generated_code, correct_code)
@@ -82,7 +83,7 @@ class NaiveFixBugLLMMethod(LLMMethod):
         def f():
             return self.cot(prompt = prompt)
         
-        with dspy.settings.context(llm = self.llm, track_usage=True):
+        with dspy.settings.context(lm = self.llm, track_usage=True):
             with RetryExecution("NaiveFixBugLLMMethod", 3, logger) as retry:
                 result = retry(f)
 
@@ -119,7 +120,7 @@ class GenerateFromScratchLLMMethod(LLMMethod):
             return self.cot(prompt = prompt)
         
         
-        with dspy.settings.context(llm = self.llm, track_usage=True):
+        with dspy.settings.context(lm = self.llm, track_usage=True):
             with RetryExecution("GenerateFromScratchLLMMethod", 3, logger) as retry:
                 result = retry(f)
                 
@@ -151,6 +152,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             self.model_output_path = model_output_path
             if self.model_path:
                 self.cot.load(self.model_path)
+            
             self.problems_manger = problems_manager
 
         def fit(self, train_submissions: list[Submission], val_submissions: list[Submission]):
@@ -244,9 +246,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                      examples = str(problem.examples),
                      note = problem.note or "None",
                      submission_verdict = submission.verdict,
-                     buggy_code = submission.source_code).with_inputs(
-                            "problem_description", "input_format", "output_format", 
-                            "examples", "note", "submission_verdict", "buggy_code")
+                     buggy_code = submission.source_code)
                 
                 return prediction
             
