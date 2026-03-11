@@ -59,7 +59,7 @@ def load_dataset(path_to_dataset,
     
     attach_dif_data(dataset_submissions)
 
-    dataset_submissions = dataset_submissions[dataset_submissions['code_mod_ratio'] <= code_mod_ratio_threshold]
+    dataset_submissions = dataset_submissions[dataset_submissions['code_similar_score'] >= code_mod_ratio_threshold]
     
     return dataset_submissions, manager
 
@@ -128,7 +128,7 @@ async def predict_step(config):
             for method in methods:
                 try:
                     llm_result = method.predict(submission)
-                    llm_result.loss = await method.compute_loss(submission.problem_id, submission.source_code, submission.anchor.source_code, llm_result.source_code)
+                    llm_result.reward = await method.compute_loss(submission.problem_id, submission.source_code, submission.anchor.source_code, llm_result.source_code)
                     results.append(llm_result)
                 except Exception as e:
                     logger.error(f'Could not predict submission {submission.submission_id} for problem {submission.problem_id}. Reason: {e}. Skipping!')
@@ -166,7 +166,7 @@ def evaluate_step(config):
                 if generated_result.method_name not in metrics:
                     metrics[generated_result.method_name] = []
 
-                metrics[generated_result.method_name].append(generated_result.loss.model_dump())
+                metrics[generated_result.method_name].append(generated_result.reward.model_dump())
         
         for m_name, values in metrics.items():
             df = pd.DataFrame.from_records(values)
@@ -175,7 +175,7 @@ def evaluate_step(config):
             for col in stats.columns:
                 for descriptor in stats.index:
                         if descriptor == 'mean' or descriptor == 'std' or descriptor == 'min' or descriptor=='max':
-                            if col == 'total_loss':
+                            if col == 'total_reward':
                                 result_sample[m_name + '_' + col + '_' + descriptor] = stats.loc[descriptor, col].item()
 
         result.append(result_sample)

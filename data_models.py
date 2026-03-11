@@ -37,13 +37,25 @@ class ModelInfo(BaseModel):
     vendor: str
     model_name: str
 
-class Loss(BaseModel):
-    test_loss: float
-    num_add_lines_loss: float
-    num_deleted_lines_loss: float
-    num_total_lines_loss: float
-    total_loss: float
-    total_normalized_loss: float
+class RewardContext(BaseModel):
+    num_lines_buggy_solution: int
+    num_lines_correct_solution: int
+    num_lines_generated_solution: int
+    num_added_lines_baseline: int
+    num_deleted_lines_baseline: int
+    num_added_lines_generated: int
+    num_deleted_lines_generated: int
+    num_common_lines_baseline: int
+    num_common_lines_generated: int
+    test_pass:float
+    similarity_baseline:float
+    similarity_generated:float
+
+class Reward(BaseModel):
+    context: Optional[RewardContext] = None
+    test_reward: float
+    similarity_reward: float
+    total_reward: float
     
 class GeneratedLLMResult(BaseModel):
     generated_result_id: str
@@ -54,7 +66,7 @@ class GeneratedLLMResult(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
-    loss: Optional[Loss] = None
+    reward: Optional[Reward] = None
 
 class ResultAnalysis(BaseModel):
     problem_id: str

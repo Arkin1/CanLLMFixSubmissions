@@ -109,41 +109,50 @@ def count_differences(source_a:str, source_b:str):
 def attach_dif_data(submissions_df):
     number_additions = []
     addition_ratio = []
+    number_common = []
     number_deletions = []
     deletion_ratio = []
     number_lines = []
+    code_similar_score = []
 
     for _, s in submissions_df.iterrows():
         s_sc = s['sourceCode']
+        num_s_sc = len(s_sc.splitlines())
         number_lines.append(len(s_sc.splitlines()))
 
         if s['AcceptedAnchor'] == -1:
             number_additions.append(0)
-            addition_ratio.append(0)
-
             number_deletions.append(0)
-            deletion_ratio.append(0)    
+            number_common.append(num_s_sc)
+            addition_ratio.append(0)
+            deletion_ratio.append(0) 
+            code_similar_score.append(1)   
             continue
         
         t_sc = submissions_df.loc[s['AcceptedAnchor']]['sourceCode']
 
+        num_t_sc = len(t_sc.splitlines())
+
         additions, deletions = count_differences(s_sc, t_sc)
+        common = num_s_sc - deletions
 
         number_additions.append(additions)
+        number_common.append(common)
         number_deletions.append(deletions)
 
-        deletion_ratio.append(deletions / max(1, len(s_sc.splitlines())))
-        addition_ratio.append(additions / max(1, len(t_sc.splitlines())))
+        deletion_ratio.append(deletions / num_s_sc)
+        addition_ratio.append(additions / num_t_sc)
+
+        #jaccard index
+        code_similar_score.append(common / (common + additions + deletions))
+
         
     submissions_df['code_additions'] = number_additions
     submissions_df['code_deletions'] = number_deletions
+    submissions_df['code_common'] = number_common
     submissions_df['code_addition_ratio'] = addition_ratio
     submissions_df['code_deletion_ratio'] = deletion_ratio
-
-    if addition_ratio == 0 or deletion_ratio == 0:
-        submissions_df['code_mod_ratio'] = 0
-    else:
-        submissions_df['code_mod_ratio'] =  2 / (1/submissions_df['code_addition_ratio'] + 1/submissions_df['code_deletion_ratio'])
+    submissions_df['code_similar_score'] = code_similar_score
     submissions_df['number_lines'] = number_lines
 
 class RetryContext():

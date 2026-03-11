@@ -3,7 +3,7 @@ settings:
   top_k: 100
   variance_per_sample: 3
 dataset:
-  path_to_dataset: "data/sample_submissions.csv"
+  path_to_dataset: "data/dataset.csv"
   path_to_test_data: 'data/codeforces/generated_tests'
   path_to_contest_data : 'data/codeforces/data'
   code_mod_ratio_threshold: 0.5
@@ -30,8 +30,8 @@ methods:
 fit:
   DSPyOptimizedLLMMethod:
     vendor: 'OpenAI'
-    model_name: 'gpt-5.2'
+    model_name: 'gpt-5-nano'
     cache: False
 
 output:
-  path: 'data/output_sample_gpt_5_2'
+  path: 'data/output_small_subset_nano'

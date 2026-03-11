@@ -1,6 +1,6 @@
 from genai.endpoints import get_llm_api
 from genai.utils import read_prompt, CodeParser
-from data_models import Problem, Submission, GeneratedLLMResult, ModelInfo, Loss
+from data_models import Problem, Submission, GeneratedLLMResult, ModelInfo, Reward,RewardContext
 from utils import compile_and_test, count_differences, ProblemsManager
 from utils import RetryExecution
 import logging
@@ -29,37 +29,40 @@ class LLMMethod():
     
     async def compute_loss(self, problem_id:str, buggy_code:str, correct_code:str, generated_code:str):
         generated_code = clean_source_code(generated_code)
-        test_loss = await self.problems_manager.evaluate_submission(problem_id, generated_code, "GNU C++", 'soft')
+        test_reward = await self.problems_manager.evaluate_submission(problem_id, generated_code, "GNU C++", 'soft')
+
+        num_lines_buggy_code = len(buggy_code.splitlines())
+        num_lines_correct_code = len(correct_code.splitlines())
+        num_lines_generated_code = len(generated_code.splitlines())
+
         num_add_baseline, num_del_baseline = count_differences(buggy_code, correct_code)
+        num_common_baseline = num_lines_buggy_code - num_del_baseline
+
         num_add_generated, num_del_generated = count_differences(generated_code, correct_code)
+        num_common_generated = num_lines_generated_code - num_del_generated
 
-        add_loss = num_add_generated - num_add_baseline
-        del_loss = num_del_generated - num_del_baseline
+        jaccard_similarity_baseline = num_common_baseline / (num_common_baseline + num_add_baseline + num_del_baseline)
+        jaccard_similarity_generated = num_common_generated / (num_common_generated + num_add_generated + num_del_generated)
 
-        lines_loss = add_loss + del_loss
+        similarity_reward = min(1, jaccard_similarity_generated /  jaccard_similarity_baseline)
 
-        mx_value = (len(correct_code.splitlines()) * 2 - num_add_baseline - num_del_baseline)
+        context = RewardContext(num_lines_buggy_solution = num_lines_buggy_code,
+                                num_lines_correct_solution = num_lines_correct_code,
+                                num_lines_generated_solution = num_lines_generated_code,
+                                num_added_lines_baseline = num_add_baseline,
+                                num_deleted_lines_baseline = num_del_baseline,
+                                num_added_lines_generated = num_add_generated,
+                                num_deleted_lines_generated = num_del_generated,
+                                num_common_lines_baseline = num_common_baseline,
+                                num_common_lines_generated = num_common_generated,
+                                test_pass = test_reward,
+                                similarity_baseline = jaccard_similarity_baseline,
+                                similarity_generated = jaccard_similarity_generated)
         
-        if (abs(test_loss - 1) < 1e-4):
-            total_loss = lines_loss
-        else:
-            total_loss = mx_value
-        
-        if total_loss < 0 : # Generated solution is equal or closer to the correct solution than the buggy solution.
-            total_normalized_loss = 1.0
-        else: 
-            total_normalized_loss = (mx_value - total_loss) / mx_value
-
-            if total_normalized_loss < 0: #There are more lines added or deleted than the number of lines in the correct code.
-                total_normalized_loss = 0
-
-        return Loss(test_loss = test_loss, 
-                    num_add_lines_loss=add_loss, 
-                    num_deleted_lines_loss=del_loss, 
-                    num_total_lines_loss=lines_loss,
-                    total_loss = total_loss,
-                    total_normalized_loss = total_normalized_loss)
-
+        return Reward(context = context,
+                      test_reward = float((test_reward  > 0.99)), 
+                      similarity_reward = similarity_reward,
+                      total_reward = (test_reward  > 0.99) * similarity_reward)
 
 class NaiveFixBugLLMMethod(LLMMethod):
     def __init__(self, vendor:str, model_name:str, problems_manager:ProblemsManager = None, **model_kwargs):
@@ -93,7 +96,7 @@ class NaiveFixBugLLMMethod(LLMMethod):
                                   llm_result = result.fixed_code,
                                   source_code = CodeParser.extract_code(result.fixed_code),
                                   model_info = ModelInfo(vendor = self.vendor, model_name = self.model_name),
-                                  loss=None,
+                                  reward=None,
                                   prompt_tokens = lm_usage['prompt_tokens'],
                                   completion_tokens=lm_usage['completion_tokens'],
                                   total_tokens = lm_usage['total_tokens'])
@@ -130,7 +133,7 @@ class GenerateFromScratchLLMMethod(LLMMethod):
                                   llm_result = result.generated_code,
                                   source_code = CodeParser.extract_code(result.generated_code),
                                   model_info = ModelInfo(vendor = self.vendor, model_name = self.model_name),
-                                  loss=None,
+                                  reward=None,
                                   prompt_tokens = lm_usage['prompt_tokens'],
                                   completion_tokens=lm_usage['completion_tokens'],
                                   total_tokens = lm_usage['total_tokens'])
@@ -181,8 +184,8 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                     loss = asyncio.run(loss_co)
 
                 feedback_text = ""
-                if loss.test_loss < 1:
-                    feedback_text = f"The proposed code fails on {(1 - loss.test_loss)*100}% of tests. The fix is not solving the bug."
+                if loss.test_reward < 1:
+                    feedback_text = f"The proposed code fails on {(1 - loss.test_reward)*100}% of tests. The fix is not solving the bug."
                 else:
                     if loss.total_normalized_loss < 1:
                         feedback_text = f"All the tests pass, but you are not sticking to the original code. You should fix the bug by modifying as few code as possible."
@@ -261,7 +264,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                                     llm_result = result.fixed_code,
                                     source_code = CodeParser.extract_code(result.fixed_code),
                                     model_info = ModelInfo(vendor = self.vendor, model_name = self.model_name),
-                                    loss=None,
+                                    reward=None,
                                     prompt_tokens = lm_usage['prompt_tokens'],
                                     completion_tokens=lm_usage['completion_tokens'],
                                     total_tokens = lm_usage['total_tokens'])
