@@ -310,7 +310,9 @@ class ProblemsManager():
             problem_info = self.problems_train[self.problems_train_ds_index_mapping[problem_id][0]]
         elif problem_id in self.problems_test_ds_index_mapping:
             problem_info = self.problems_test[self.problems_test_ds_index_mapping[problem_id][0]]
-
+        else:
+            raise Exception(f"Problem with id {problem_id} not found in train or test datasets")
+        
         tests = [Test(input = t['input'], output = t['output']) for t in problem_info['official_tests']]
 
         if not problem_info['official_tests_complete']:

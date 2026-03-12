@@ -49,7 +49,7 @@ fit:
     path_to_dataset: 'data/dataset_train.csv'
   val_dataset:
     path_to_dataset: 'data/dataset_val.csv'
-  methods:
+  method:
     DSPyOptimizedLLMMethod:
       vendor: 'OpenAI'
       model_name: 'gpt-5-nano'

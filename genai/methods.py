@@ -44,6 +44,9 @@ class LLMMethod():
         jaccard_similarity_baseline = num_common_baseline / (num_common_baseline + num_add_baseline + num_del_baseline)
         jaccard_similarity_generated = num_common_generated / (num_common_generated + num_add_generated + num_del_generated)
 
+        if jaccard_similarity_baseline == 0:
+            raise Exception("Baseline similarity is 0, cannot compute reward")
+        
         similarity_reward = min(1, jaccard_similarity_generated /  jaccard_similarity_baseline)
 
         context = RewardContext(num_lines_buggy_solution = num_lines_buggy_code,
@@ -159,7 +162,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             if self.model_path:
                 self.cot.load(self.model_path)
             
-            self.problems_manger = problems_manager
+            self.problems_manager = problems_manager
 
         def fit(self, train_submissions: list[Submission], val_submissions: list[Submission]):
             if not self.model_output_path:
@@ -262,7 +265,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
 
             lm_usage = list(result.get_lm_usage().values())[0]
 
-            return GeneratedLLMResult(generated_result_id = submission.submission_id + 'DSPyOptimizedLLMMethod',
+            return GeneratedLLMResult(generated_result_id = submission.submission_id + '_DSPyOptimizedLLMMethod',
                                     method_name = "DSPyOptimizedLLMMethod",
                                     llm_result = result.fixed_code,
                                     source_code = CodeParser.extract_code(result.fixed_code),

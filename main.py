@@ -88,7 +88,7 @@ def compute_figures(df_sub:pd.DataFrame, output_path:str, suffix:str):
 
     t = df_buggy.groupby(['AcceptedAnchor', 'verdict']).size().reset_index(name='Number of buggy submissions per anchor')
     g = sns.displot(t, x = 'Number of buggy submissions per anchor', hue = 'verdict', col = 'verdict',stat = 'density', common_norm=False)
-    plt.savefig(os.path.join(output_path, f'buggy_submissions_per_anchor_{suffix}.png'))
+    plt.savefig(os.path.join(output_path, f'buggy_submissions_per_anchor_verdict_{suffix}.png'))
     plt.clf()
 
     if "code_addition_ratio" in df_buggy.columns and "code_deletion_ratio" in df_buggy.columns and "code_similar_score" in df_buggy.columns:
@@ -271,7 +271,9 @@ async def fit_step(config):
         submissions_train = df_to_submissions(submissions_df_train, problem_manager) 
         submissions_val = df_to_submissions(submissions_df_val, problem_manager) 
 
-    model:LLMMethod = [genai_methods.create_method(m_name, problems_manager = problem_manager, **m_args) for m_name, m_args in fit_config['methods'].items()][0]
+    if len(fit_config['method'].items()) > 1:
+        raise NotImplementedError("Currently only one method can be trained at a time")
+    model:LLMMethod = [genai_methods.create_method(m_name, problems_manager = problem_manager, **m_args) for m_name, m_args in fit_config['method'].items()][0]
     
     model.fit(submissions_train, submissions_val)
     
