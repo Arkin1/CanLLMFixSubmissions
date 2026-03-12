@@ -11,8 +11,14 @@ from data_models import Problem, Test
 from typing import Literal
 import hashlib
 import os
+import re
+from tqdm import tqdm
+from data_models import Problem, Submission, GeneratedLLMResult, ResultAnalysis
+import pandas as pd
 
 logger = logging.getLogger()
+
+comment_removal_regex = re.compile(r"\/\*[\s\S]*?\*\/|\/\/.*")
 
 async def _fetch(session, url, data, headers: Optional[Dict[str, str]] = None):
     async with session.post(url, json = data, headers =headers) as response:
@@ -78,6 +84,7 @@ async def compile_and_test(source_code:str, problem_data:Problem, endpoint:str, 
     return await _compile_and_test_async(source_code, problem_data, endpoint, programmingLanguage)
 
 def clean_source_code(source_code):
+    source_code = comment_removal_regex.sub('', source_code)
     lines = [l for l in source_code.splitlines()]
     lines = [l for l in lines if l != '']
 
@@ -239,7 +246,7 @@ class RetryExecutionAsync():
         return False
     
 
-def get_codeforces_r1_dataset(problems_ids:list[str], 
+def get_problems_manager(problems_ids:list[str], 
                               path_to_contest_data:str, 
                               path_to_test_files_data:str, 
                               cache:bool = True,
@@ -277,7 +284,7 @@ def get_codeforces_r1_dataset(problems_ids:list[str],
 
             del problems
             del generated_tests_ds
-            return get_codeforces_r1_dataset(problems_ids, path_to_contest_data, path_to_test_files_data, cache, cache_folder)
+            return get_problems_manager(problems_ids, path_to_contest_data, path_to_test_files_data, cache, cache_folder)
         else:
             logger.info("Caching is disabled")
             return ProblemsManager(problems, generated_tests_ds)
@@ -385,3 +392,41 @@ class ProblemsManager():
             index_c[problem_id].append(idx)
         
         return index_c
+    
+def df_to_submissions(submissions_df:pd.DataFrame, problem_manager:ProblemsManager) -> list[Submission]:
+    submissions = []
+    for idx, s in tqdm(list(submissions_df.iterrows())):
+        try:
+            problem = problem_manager.get_info_problem(s['problem_id'])
+        except Exception as e:
+            logger.error(f"Can't get problem {s['problem_id']}: {e}")
+            continue
+
+        s_idx = s['AcceptedAnchor']
+        if s_idx == -1:
+            continue
+        s_a = submissions_df.loc[s_idx]
+
+        submission_anchor = Submission(submission_id = str(s_idx), 
+                                        problem_id = problem.problem_id,
+                                        source_code = s_a['sourceCode'], 
+                                        programming_language = s_a['programmingLanguage'], 
+                                        verdict = s_a['verdict'],
+                                        ds_verdict = s_a['passes_r1_tests'])
+        
+        submission = Submission(submission_id = str(idx), 
+                                problem_id = problem.problem_id,
+                                source_code = s['sourceCode'], 
+                                programming_language = s['programmingLanguage'], 
+                                verdict = s['verdict'],
+                                ds_verdict = s['passes_r1_tests'],
+                                anchor = submission_anchor)
+        
+        if submission.ds_verdict == True:
+            logger.warning(f'Submission with id {submission.submission_id} should not pass the tests')
+
+        if submission.anchor.ds_verdict == False:
+            logger.warning(f'Submission anchor with id {submission.anchor.submission_id} should pass the tests')
+    
+        submissions.append(submission)
+    return submissions

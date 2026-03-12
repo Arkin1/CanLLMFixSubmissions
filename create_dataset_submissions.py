@@ -4,7 +4,7 @@ import logging
 from glob import glob
 import json
 import os
-from utils import get_codeforces_r1_dataset
+from utils import get_problems_manager
 from tqdm import tqdm
 
 
@@ -33,7 +33,7 @@ def _determine_anchor(group):
 async def _append_submission_status_r1(dataset:pd.DataFrame, path_to_test_files_data:str, path_to_contest_data:str):
     logger.info(f"Marking submissions that can be used with Codeforces R1 Dataset and if they pass the test suite or not...")
     problems_ids = set(list(dataset['problem_id']))
-    manager = get_codeforces_r1_dataset(problems_ids, path_to_contest_data, path_to_test_files_data)
+    manager = get_problems_manager(problems_ids, path_to_contest_data, path_to_test_files_data)
 
     passes_r1_tests = []
     is_problem_usable = []
