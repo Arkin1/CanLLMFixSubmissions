@@ -27,7 +27,7 @@ class LLMMethod():
     def predict(self, submission: Submission) -> GeneratedLLMResult:
         pass
     
-    async def compute_loss(self, problem_id:str, buggy_code:str, correct_code:str, generated_code:str):
+    async def compute_reward(self, problem_id:str, buggy_code:str, correct_code:str, generated_code:str):
         generated_code = clean_source_code(generated_code)
         test_reward = await self.problems_manager.evaluate_submission(problem_id, generated_code, "GNU C++", 'soft')
 
@@ -144,11 +144,14 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                      vendor:str, 
                      model_name:str, 
                      problems_manager:ProblemsManager = None, 
+                     reflection_model_name:str = None, 
                      model_path: str = None,
                      model_output_path: str = None,
                      **model_kwargs):
             super().__init__(vendor, model_name, problems_manager)
             self.llm = get_llm_api(vendor, model_name, **model_kwargs)
+            if reflection_model_name:
+                self.reflection_model = get_llm_api(vendor, reflection_model_name, **model_kwargs)
             dspy.configure(lm=self.llm)
             self.cot = dspy.ChainOfThought(BugFixerSignature)
             self.model_path = model_path
@@ -173,26 +176,26 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                 except RuntimeError:
                     running_loop = None
 
-                loss_co = self.compute_loss(problem_id = gold.problem_id, 
+                reward_co = self.compute_reward(problem_id = gold.problem_id, 
                             buggy_code = gold.buggy_code, 
                             correct_code = gold.fixed_code, 
                             generated_code = CodeParser.extract_code(pred.fixed_code))
                 
                 if running_loop:
-                    loss = running_loop.run_until_complete(loss_co)
+                    reward = running_loop.run_until_complete(reward_co)
                 else:
-                    loss = asyncio.run(loss_co)
+                    reward = asyncio.run(reward_co)
 
                 feedback_text = ""
-                if loss.test_reward < 1:
-                    feedback_text = f"The proposed code fails on {(1 - loss.test_reward)*100}% of tests. The fix is not solving the bug."
+                if reward.test_reward < 1:
+                    feedback_text = f"Your score is 0. The proposed code fails on {(1 - reward.context.test_pass)*100}% of tests. The fix is not solving the bug."
                 else:
-                    if loss.total_normalized_loss < 1:
-                        feedback_text = f"All the tests pass, but you are not sticking to the original code. You should fix the bug by modifying as few code as possible."
+                    if reward.total_reward < 1:
+                        feedback_text = f"Your score is {reward.total_reward}. All the tests pass, but you are not sticking to the original code. You should fix the bug by modifying as few code lines as possible."
                     else:
                         feedback_text = f"You generated a good bug fix!"
                 
-                return dspy.Prediction(score = loss.total_normalized_loss, feedback = feedback_text)
+                return dspy.Prediction(score = reward.total_reward, feedback = feedback_text)
                                          
             
             train_dataset = []
@@ -232,7 +235,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             
             guesser = dspy.GEPA(metric = metric, 
                                 auto = 'light',
-                                reflection_lm = self.llm,
+                                reflection_lm = self.reflection_model,
                                 track_stats = True)
             optimized_program = guesser.compile(self.cot, trainset=train_dataset, valset=val_dataset)
             optimized_program.save(self.model_output_path)

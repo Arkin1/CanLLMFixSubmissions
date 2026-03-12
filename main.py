@@ -176,7 +176,7 @@ async def predict_step(config):
             for method in methods:
                 try:
                     llm_result = method.predict(submission)
-                    llm_result.reward = await method.compute_loss(submission.problem_id, submission.source_code, submission.anchor.source_code, llm_result.source_code)
+                    llm_result.reward = await method.compute_reward(submission.problem_id, submission.source_code, submission.anchor.source_code, llm_result.source_code)
                     results.append(llm_result)
                 except Exception as e:
                     logger.error(f'Could not predict submission {submission.submission_id} for problem {submission.problem_id}. Reason: {e}. Skipping!')
