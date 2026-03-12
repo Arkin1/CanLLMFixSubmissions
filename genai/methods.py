@@ -149,6 +149,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                      problems_manager:ProblemsManager = None, 
                      reflection_model_name:str = None, 
                      model_path: str = None,
+                     seed:int = 0,
                      model_output_path: str = None,
                      **model_kwargs):
             super().__init__(vendor, model_name, problems_manager)
@@ -162,6 +163,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             if self.model_path:
                 self.cot.load(self.model_path)
             
+            self.seed = seed
             self.problems_manager = problems_manager
 
         def fit(self, train_submissions: list[Submission], val_submissions: list[Submission]):
@@ -239,7 +241,8 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             guesser = dspy.GEPA(metric = metric, 
                                 auto = 'light',
                                 reflection_lm = self.reflection_model,
-                                track_stats = True)
+                                track_stats = True,
+                                seed = self.seed)
             optimized_program = guesser.compile(self.cot, trainset=train_dataset, valset=val_dataset)
             optimized_program.save(self.model_output_path)
 
