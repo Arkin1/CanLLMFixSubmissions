@@ -1,6 +1,5 @@
 experiment_name: "Test"
 settings:
-  top_k: 100
   variance_per_sample: 3
 
 r1_codeforces_dataset:

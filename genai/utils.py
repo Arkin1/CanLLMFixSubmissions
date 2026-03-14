@@ -15,7 +15,7 @@ class CodeParser():
     re_code2 = re.compile(r'```cpp(.+)```')
     re_code3 = re.compile(r'```c(.+)```')
     re_code4 = re.compile(r'```(.+)```')
-    think_code4 = re.compile((r'```<think>(.+)</think>```'))
+    think_code4 = re.compile(r'```<think>(.+)</think>```')
 
     @staticmethod
     def extract_code(s:str):
