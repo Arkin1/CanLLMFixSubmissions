@@ -16,7 +16,7 @@ nest_asyncio.apply()
 logger = logging.getLogger()
 
 class LLMMethod():
-    def __init__(self, vendor:str, model_name:str, problems_manager:ProblemsManager = None):
+    def __init__(self, vendor:str, model_name:str, problems_manager:ProblemsManager):
         self.model_name = model_name
         self.vendor = vendor
         self.problems_manager = problems_manager
@@ -38,8 +38,8 @@ class LLMMethod():
         num_add_baseline, num_del_baseline = count_differences(buggy_code, correct_code)
         num_common_baseline = num_lines_buggy_code - num_del_baseline
 
-        num_add_generated, num_del_generated = count_differences(generated_code, correct_code)
-        num_common_generated = num_lines_generated_code - num_del_generated
+        num_add_generated, num_del_generated = count_differences(buggy_code, generated_code)
+        num_common_generated = num_lines_buggy_code - num_del_generated
 
         jaccard_similarity_baseline = num_common_baseline / (num_common_baseline + num_add_baseline + num_del_baseline)
         jaccard_similarity_generated = num_common_generated / (num_common_generated + num_add_generated + num_del_generated)
@@ -68,7 +68,7 @@ class LLMMethod():
                       total_reward = (test_reward  > 0.99) * similarity_reward)
 
 class NaiveFixBugLLMMethod(LLMMethod):
-    def __init__(self, vendor:str, model_name:str, problems_manager:ProblemsManager = None, **model_kwargs):
+    def __init__(self, vendor:str, model_name:str, problems_manager:ProblemsManager, **model_kwargs):
         super().__init__(vendor, model_name, problems_manager)
         self.llm = get_llm_api(vendor, model_name, **model_kwargs)
         dspy.configure(lm=self.llm)
@@ -106,7 +106,7 @@ class NaiveFixBugLLMMethod(LLMMethod):
  
 
 class GenerateFromScratchLLMMethod(LLMMethod):
-    def __init__(self, vendor:str, model_name:str, problems_manager:ProblemsManager = None, **model_kwargs):
+    def __init__(self, vendor:str, model_name:str, problems_manager:ProblemsManager, **model_kwargs):
         super().__init__(vendor, model_name, problems_manager)
         self.llm = get_llm_api(vendor, model_name, **model_kwargs)
         dspy.configure(lm=self.llm)
@@ -146,7 +146,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
         def __init__(self, 
                      vendor:str, 
                      model_name:str, 
-                     problems_manager:ProblemsManager = None, 
+                     problems_manager:ProblemsManager, 
                      reflection_model_name:str = None, 
                      model_path: str = None,
                      seed:int = 0,

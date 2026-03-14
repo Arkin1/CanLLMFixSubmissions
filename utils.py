@@ -86,7 +86,7 @@ async def compile_and_test(source_code:str, problem_data:Problem, endpoint:str, 
 def clean_source_code(source_code):
     source_code = comment_removal_regex.sub('', source_code)
     lines = [l for l in source_code.splitlines()]
-    lines = [l for l in lines if l != '']
+    lines = [l for l in lines if l.replace('\t', '').replace('\r', '').strip() != '']
 
     return "\n".join(lines)
 

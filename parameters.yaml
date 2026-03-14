@@ -19,10 +19,11 @@ preprocess_dataset:
   path_to_dataset: 'data/dataset.csv'
   train_ratio: 0.15
   val_ratio: 0.15
-  test_ratio: 0.70
+  test_ratio: 0.7
   seed: 54
   code_mod_ratio_threshold: 0.6
   output_figures_path: 'data/figures'
+  output_preprocessed_path: 'data/dataset_preprocessed.csv'
   output_train_path: 'data/dataset_train.csv'
   output_val_path: 'data/dataset_val.csv'
   output_test_path: 'data/dataset_test.csv'
@@ -46,9 +47,9 @@ predict:
     
 fit:
   train_dataset:
-    path_to_dataset: 'data/dataset_train.csv'
+    path_to_submissions: 'data/dataset_train.csv'
   val_dataset:
-    path_to_dataset: 'data/dataset_val.csv'
+    path_to_submissions: 'data/dataset_val.csv'
   method:
     DSPyOptimizedLLMMethod:
       vendor: 'OpenAI'
@@ -57,4 +58,4 @@ fit:
       max_tokens: 32000
       cache: False
       seed: 42
-      model_output_path: 'data/models/optimized_model_gepa_v2.json'
+      model_output_path: 'data/models/optimized_model_gepa_v3.json'

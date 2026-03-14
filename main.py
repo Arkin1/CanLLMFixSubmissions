@@ -48,7 +48,7 @@ def preprocess_data(dataset_submissions:pd.DataFrame, code_mod_ratio_threshold:f
     dataset_submissions['sourceCode'] = dataset_submissions['sourceCode'].apply(lambda x: base64.b64decode(x).decode('utf-8'))
     dataset_submissions['sourceCode'] = dataset_submissions['sourceCode'].apply(clean_source_code)
     attach_dif_data(dataset_submissions)
-    dataset_submissions['sourceCode'] = dataset_submissions['sourceCode'].apply(lambda x: base64.b64encode(x.encode('utf-8')))
+    dataset_submissions['sourceCode'] = dataset_submissions['sourceCode'].apply(lambda x: base64.b64encode(x.encode('utf-8')).decode('utf-8'))
 
     dataset_submissions = dataset_submissions[dataset_submissions['code_similar_score'] >= code_mod_ratio_threshold]
 
@@ -116,6 +116,8 @@ def preprocess_dataset_step(config):
     dataset_submissions = preprocess_data(dataset_submissions, config['code_mod_ratio_threshold'])
     compute_figures(dataset_submissions, config['output_figures_path'], suffix = 'preprocessed')
 
+    dataset_submissions.to_csv(config['output_preprocessed_path'])
+
     problem_ids = dataset_submissions['problem_id'].unique()
 
     train_ratio = config['train_ratio']
@@ -140,18 +142,19 @@ def preprocess_dataset_step(config):
     compute_figures(dataset_submissions_test, config['output_figures_path'], suffix = 'test')
     
 async def predict_step(config):
-    output_path = config['output']['path']
     top_k = config['settings'].get('top_k')
     variance_per_sample = config['settings']['variance_per_sample']
-
-    os.makedirs(output_path, exist_ok=True)
 
     r1_dataset_config = config['r1_codeforces_dataset']
 
     predict_config = config['predict']
+    output_path = predict_config['output']['path']
+    os.makedirs(output_path, exist_ok=True)
+
     dataset_config = predict_config['dataset']
 
     submissions_df = load_dataset(dataset_config['path_to_submissions'])
+    submissions_df['sourceCode'] = submissions_df['sourceCode'].apply(lambda x: base64.b64decode(x).decode('utf-8'))
     problems_ids = set(list(submissions_df['problem_id']))
 
     problem_manager = get_problems_manager(problems_ids, 
@@ -240,10 +243,7 @@ async def fit_step(config):
     )
 
     mlflow.set_experiment(config["experiment_name"])
-
-    output_path = config['output']['path']
     top_k = config['settings'].get('top_k')
-    os.makedirs(output_path, exist_ok=True)
 
     r1_dataset_config = config['r1_codeforces_dataset']
 
@@ -253,14 +253,16 @@ async def fit_step(config):
     val_dataset_config = fit_config['val_dataset']
 
     submissions_df_train = load_dataset(train_dataset_config['path_to_submissions'])
+    submissions_df_train['sourceCode'] = submissions_df_train['sourceCode'].apply(lambda x: base64.b64decode(x).decode('utf-8'))
     submissions_df_val = load_dataset(val_dataset_config['path_to_submissions'])
+    submissions_df_val['sourceCode'] = submissions_df_val['sourceCode'].apply(lambda x: base64.b64decode(x).decode('utf-8'))
 
     problems_ids = set(list(submissions_df_train['problem_id']) + list(submissions_df_val['problem_id']))
 
 
     problem_manager = get_problems_manager(problems_ids, 
                                   path_to_contest_data=r1_dataset_config['path_to_contest_data'], 
-                                  path_to_test_data=r1_dataset_config['path_to_test_data'],
+                                  path_to_test_files_data=r1_dataset_config['path_to_test_data'],
                                   cache=r1_dataset_config['cache'],
                                   cache_folder=r1_dataset_config['cache_folder'])
         
@@ -291,7 +293,7 @@ async def main():
     with open('parameters.yaml', 'r') as f:
         config = yaml.load(f, Loader=yaml.SafeLoader)
 
-    args = parser.parse_args(["--preprocess-dataset"])
+    args = parser.parse_args()
 
     if args.create_dataset:
         await create_dataset_step(config)
