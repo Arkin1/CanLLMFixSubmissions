@@ -4,8 +4,7 @@ from typing import Optional
 
 class GeneratedSolutionFromScratchSignature(dspy.Signature):
     """
-    You are an expert competitive programmer and you must help your peers in fixing bugs. You will receive a competitive programming problem with a description, example inputs / outputs. Please generate me the correct solution for the code.
-    I REALLY EMPHASIS THAT I WANT YOU TO GIVE ME A SINGLE PIECE OF CODE THAT CONTAINS THE ENTIRE SOLUTION. DON'T SPLIT IT. DON'T USE COMMENTS. Please encapsulate the code with ```cpp ```
+    Generate a solution for the given competitive programming problem.
     """
     problem_description:str = dspy.InputField(description = "Problem description.")
     input_format:str = dspy.InputField(description = "How the input should be formatted")
@@ -18,9 +17,10 @@ class GeneratedSolutionFromScratchSignature(dspy.Signature):
 
 class BugFixerSignature(dspy.Signature):
     """
-    You are an expert competitive programmer and you must help your peers in fixing bugs. You will receive a competitive programming problem with a description, example inputs / outputs and a submission with a verdict. Your job is to identify the problem in the submission and fix the bug. 
-    Note that you must stick to the original submission as much as possible, in other words, you should identify the minimum lines to add or to delete to fix the bug. You should provide me the entire fixed code.
-    I REALLY EMPHASIS THAT I WANT YOU TO GIVE ME A SINGLE PIECE OF CODE THAT CONTAINS THE ENTIRE SOLUTION. DON'T SPLIT IT. DON'T USE COMMENTS. Please encapsulate the code with ```cpp ```
+    Fix the bug in the buggy code for the given competitive programming problem by adding, deleting or modifying as few lines as possible.
+    In other words, you must adhere to the given buggy code and change it as little as possible to make it work. You can add, delete or modify lines of code, but you cannot rewrite the whole solution. 
+    The more lines you change, the more points you lose. 
+    You should try to find the bug and fix it, not to rewrite the whole solution.
     """
     problem_description:str = dspy.InputField(description = "Problem description.")
     input_format:str = dspy.InputField(description = "How the input should be formatted")
@@ -30,4 +30,4 @@ class BugFixerSignature(dspy.Signature):
     submission_verdict: str = dspy.InputField(description = "The verdict of the buggy submission (Wrong Answer, Time Limit Exceeded etc.)")
     buggy_code: str = dspy.InputField(description = "The buggy code")
 
-    fixed_code: str = dspy.OutputField(description = "The fixed code. Please encapsulate it into ```cpp```")
+    fixed_code: str = dspy.OutputField(description = "The entire fixed code. Please encapsulate it into ```cpp```")
