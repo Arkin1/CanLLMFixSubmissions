@@ -207,6 +207,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             for submission in train_submissions:
                 problem = self.problems_manager.get_info_problem(submission.problem_id)
                 train_dataset.append(dspy.Example(
+                            problem_id = problem.problem_id,
                             problem_description=problem.description,
                             input_format=problem.input_format,
                             output_format=problem.output_format,
@@ -222,6 +223,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             for submission in val_submissions:
                 problem = self.problems_manager.get_info_problem(submission.problem_id)
                 val_dataset.append(dspy.Example(
+                            problem_id = problem.problem_id,
                             problem_description=problem.description,
                             input_format=problem.input_format,
                             output_format=problem.output_format,

@@ -6,6 +6,7 @@ class GeneratedSolutionFromScratchSignature(dspy.Signature):
     """
     Generate a solution for the given competitive programming problem.
     """
+    problem_id: int = dspy.InputField(description = "The id of the problem. It is used for reference and debugging purposes, but you should not rely on it to generate the solution.")
     problem_description:str = dspy.InputField(description = "Problem description.")
     input_format:str = dspy.InputField(description = "How the input should be formatted")
     output_format: str = dspy.InputField(description = "How the output should be formatted")
@@ -22,6 +23,7 @@ class BugFixerSignature(dspy.Signature):
     The more lines you change, the more points you lose. 
     You should try to find the bug and fix it, not to rewrite the whole solution.
     """
+    problem_id: int = dspy.InputField(description = "The id of the problem. It is used for reference and debugging purposes, but you should not rely on it to generate the solution.")
     problem_description:str = dspy.InputField(description = "Problem description.")
     input_format:str = dspy.InputField(description = "How the input should be formatted")
     output_format: str = dspy.InputField(description = "How the output should be formatted")
