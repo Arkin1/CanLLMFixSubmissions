@@ -1,11 +1,11 @@
 from genai.endpoints import get_llm_api
-from genai.utils import read_prompt, CodeParser
+from genai.utils import CodeParser
 from data_models import Problem, Submission, GeneratedLLMResult, ModelInfo, Reward,RewardContext
 from utils import compile_and_test, count_differences, ProblemsManager
 from utils import RetryExecution
 import logging
 import dspy
-from dspy_modules import BugFixerSignature
+from dspy_modules import BugFixerSignature, GeneratedSolutionFromScratchSignature
 import asyncio
 from utils import clean_source_code
 from typing import Optional
@@ -72,22 +72,21 @@ class NaiveFixBugLLMMethod(LLMMethod):
         super().__init__(vendor, model_name, problems_manager)
         self.llm = get_llm_api(vendor, model_name, **model_kwargs)
         dspy.configure(lm=self.llm)
-        self.cot = dspy.ChainOfThought("prompt->fixed_code")
-
-        self.prompt_name = 'prompt_naive_fix_bug'
+        self.model = dspy.Predict(BugFixerSignature)
 
     def predict(self, submission: Submission) -> GeneratedLLMResult:
         problem = self.problems_manager.get_info_problem(submission.problem_id)
-        prompt = read_prompt(self.prompt_name,
-                             problem_description = problem.description,
-                             problem_input_format = problem.input_format,
-                             problem_output_format = problem.output_format,
-                             problem_example = "\n".join([str(e) for e in problem.examples]),
-                             note = problem.note or "None",
-                             submission_verdict = submission.verdict,
-                             submission_code = submission.source_code)
         def f():
-            return self.cot(prompt = prompt)
+            prediction = self.model(
+                     problem_description = problem.description,
+                     input_format = problem.input_format,
+                     output_format = problem.output_format,
+                     examples = str(problem.examples),
+                     note = problem.note or "None",
+                     submission_verdict = submission.verdict,
+                     buggy_code = submission.source_code)
+                
+            return prediction
         
         with dspy.settings.context(lm = self.llm, track_usage=True):
             with RetryExecution("NaiveFixBugLLMMethod", 3, logger) as retry:
@@ -110,20 +109,20 @@ class GenerateFromScratchLLMMethod(LLMMethod):
         super().__init__(vendor, model_name, problems_manager)
         self.llm = get_llm_api(vendor, model_name, **model_kwargs)
         dspy.configure(lm=self.llm)
-        self.cot = dspy.ChainOfThought("prompt->generated_code")
-        self.prompt_name = 'prompt_generate_solution'
+        self.model = dspy.Predict(GeneratedSolutionFromScratchSignature)
 
     def predict(self, submission: Submission) -> GeneratedLLMResult:
         problem = self.problems_manager.get_info_problem(submission.problem_id)
-        prompt = read_prompt(self.prompt_name,
-                             problem_description = problem.description,
-                             problem_input_format = problem.input_format,
-                             problem_output_format = problem.output_format,
-                             problem_example = str(problem.examples),
-                             note = problem.note or "None",
-                             submission_verdict = submission.verdict)
+
         def f():
-            return self.cot(prompt = prompt)
+            prediction = self.model(
+                     problem_description = problem.description,
+                     input_format = problem.input_format,
+                     output_format = problem.output_format,
+                     examples = str(problem.examples),
+                     note = problem.note or "None",
+                     submission_verdict = submission.verdict)
+            return prediction
         
         
         with dspy.settings.context(lm = self.llm, track_usage=True):
@@ -157,11 +156,11 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             if reflection_model_name:
                 self.reflection_model = get_llm_api(vendor, reflection_model_name, **model_kwargs)
             dspy.configure(lm=self.llm)
-            self.cot = dspy.ChainOfThought(BugFixerSignature)
+            self.model = dspy.Predict(BugFixerSignature)
             self.model_path = model_path
             self.model_output_path = model_output_path
             if self.model_path:
-                self.cot.load(self.model_path)
+                self.model.load(self.model_path)
             
             self.seed = seed
             self.problems_manager = problems_manager
@@ -208,7 +207,6 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             for submission in train_submissions:
                 problem = self.problems_manager.get_info_problem(submission.problem_id)
                 train_dataset.append(dspy.Example(
-                            problem_id = problem.problem_id,
                             problem_description=problem.description,
                             input_format=problem.input_format,
                             output_format=problem.output_format,
@@ -224,7 +222,6 @@ class DSPyOptimizedLLMMethod(LLMMethod):
             for submission in val_submissions:
                 problem = self.problems_manager.get_info_problem(submission.problem_id)
                 val_dataset.append(dspy.Example(
-                            problem_id = problem.problem_id,
                             problem_description=problem.description,
                             input_format=problem.input_format,
                             output_format=problem.output_format,
@@ -243,15 +240,14 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                                 reflection_lm = self.reflection_model,
                                 track_stats = True,
                                 seed = self.seed)
-            optimized_program = guesser.compile(self.cot, trainset=train_dataset, valset=val_dataset)
+            optimized_program = guesser.compile(self.model, trainset=train_dataset, valset=val_dataset)
             optimized_program.save(self.model_output_path)
 
         
         def predict(self, submission: Submission) -> GeneratedLLMResult:
             problem = self.problems_manager.get_info_problem(submission.problem_id)
             def f():
-                prediction = self.cot(
-                     problem_id = problem.problem_id, 
+                prediction = self.model(
                      problem_description = problem.description,
                      input_format = problem.input_format,
                      output_format = problem.output_format,

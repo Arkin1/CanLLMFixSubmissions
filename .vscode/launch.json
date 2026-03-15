@@ -48,7 +48,7 @@
             "name": "predict",
             "type": "debugpy",
             "request": "launch",
-            "justMyCode": true,
+            "justMyCode": false,
             "program": "${workspaceFolder}/main.py",
             "args": ["--predict"],
             "console": "integratedTerminal"
