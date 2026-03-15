@@ -241,7 +241,8 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                                 auto = 'light',
                                 reflection_lm = self.reflection_model,
                                 track_stats = True,
-                                seed = self.seed)
+                                seed = self.seed,
+                                num_threads=1)
             optimized_program = guesser.compile(self.model, trainset=train_dataset, valset=val_dataset)
             optimized_program.save(self.model_output_path)
 
