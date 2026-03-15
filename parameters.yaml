@@ -29,7 +29,7 @@ preprocess_dataset:
 
 predict:
   dataset:
-    path_to_dataset: 'data/dataset_test.csv'
+    path_to_submissions: 'data/dataset_test.csv'
   methods:
     NaiveFixBugLLMMethod:
         vendor: 'OpenAI'
@@ -42,7 +42,7 @@ predict:
       cache: False
       model_path: 'data/models/optimized_model_gepa.json'
   output:
-    path: 'data/output_sample_gpt_5_2'
+    path: 'data/output_sample_gpt_5_3'
     
 fit:
   train_dataset:

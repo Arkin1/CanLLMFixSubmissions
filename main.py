@@ -159,7 +159,7 @@ async def predict_step(config):
 
     problem_manager = get_problems_manager(problems_ids, 
                                   path_to_contest_data=r1_dataset_config['path_to_contest_data'], 
-                                  path_to_test_data=r1_dataset_config['path_to_test_data'],
+                                  path_to_test_files_data=r1_dataset_config['path_to_test_data'],
                                   cache=r1_dataset_config['cache'],
                                   cache_folder=r1_dataset_config['cache_folder'])
 
