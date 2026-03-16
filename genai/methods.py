@@ -238,11 +238,10 @@ class DSPyOptimizedLLMMethod(LLMMethod):
 
             
             guesser = dspy.GEPA(metric = metric, 
-                                auto = 'light',
+                                max_full_evals=2,
                                 reflection_lm = self.reflection_model,
                                 track_stats = True,
-                                seed = self.seed,
-                                num_threads=1)
+                                seed = self.seed)
             optimized_program = guesser.compile(self.model, trainset=train_dataset, valset=val_dataset)
             optimized_program.save(self.model_output_path)
 
