@@ -206,7 +206,7 @@ async def predict_step(config):
 
 
 def evaluate_step(config):
-    output_path = config['output']['path']
+    output_path = config['evaluate']['dataset']['path_to_predictions']
 
     buckets_samples_analyses = {}
     for root, _, files in os.walk(output_path):
@@ -222,29 +222,44 @@ def evaluate_step(config):
     result = []
     for sample_id, var_samples in buckets_samples_analyses.items():
         result_sample = {"sample_id": sample_id,
-                         "problem_id": var_samples[0].problem_id}
+                         "problem_id": var_samples[0].problem_id,
+                         "verdict":  var_samples[0].submission.verdict,
+                         "model": var_samples[0].generated_results[0].model_info.model_name}
         metrics = {}
         for s_result in var_samples:
             for generated_result in s_result.generated_results:
                 if generated_result.method_name not in metrics:
                     metrics[generated_result.method_name] = []
 
-                metrics[generated_result.method_name].append(generated_result.reward.model_dump())
+                reward = generated_result.reward.model_dump()
+                reward.update(reward['context'])
+                del reward['context']
+                metrics[generated_result.method_name].append(reward)
         
         for m_name, values in metrics.items():
-            df = pd.DataFrame.from_records(values)
-            stats = df.describe()
+            df_values = pd.DataFrame.from_records(values)
+            df_values = df_values[['total_reward', 'similarity_reward', 'test_reward', 'similarity_baseline']]
 
-            for col in stats.columns:
-                for descriptor in stats.index:
-                        if descriptor == 'mean' or descriptor == 'std' or descriptor == 'min' or descriptor=='max':
-                            if col == 'total_reward':
-                                result_sample[m_name + '_' + col + '_' + descriptor] = stats.loc[descriptor, col].item()
+            max_pos = df_values['total_reward'].argmax()
 
-        result.append(result_sample)
+            max_values = {"method":m_name}
+            max_values.update(df_values.iloc[max_pos].to_dict())
+            result.append(result_sample | max_values)
     
-    result_df = pd.DataFrame.from_records(result)
-    result_df.to_csv(os.path.join(output_path, 'result.csv'), index=False)
+    result_sample_df = pd.DataFrame.from_records(result)
+    result_sample_df.to_csv(os.path.join(output_path, 'result_sample.csv'), index=False)
+
+    result_sample_df['similarity_baseline_binarize'] = result_sample_df['similarity_baseline'].round(1)
+    result_sample_df = result_sample_df.drop(['sample_id', 'problem_id', 'similarity_baseline'], axis = 1)
+
+    result_no_verdict_df = result_sample_df.copy()
+    result_no_verdict_df = result_no_verdict_df.drop(['verdict'], axis = 1)
+    result_no_verdict_df = result_no_verdict_df.groupby(['model', 'method', 'similarity_baseline_binarize']).agg(['mean', 'sem'])
+    result_no_verdict_df.reset_index().to_csv(os.path.join(output_path, 'result_no_verdicts.csv'), index=False)
+
+    result_with_verdict_df = result_sample_df.copy()
+    result_with_verdict_df = result_with_verdict_df.groupby(['model', 'method', 'verdict', 'similarity_baseline_binarize']).agg(['mean', 'sem'])
+    result_with_verdict_df.reset_index().to_csv(os.path.join(output_path, 'result_with_verdicts.csv'), index=False)
 
 async def fit_step(config):
     # Enable full autologging

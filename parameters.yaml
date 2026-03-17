@@ -52,6 +52,12 @@ predict:
 
   output:
     path: 'data/output_final_gpt-5-nano'
+
+
+evaluate:
+  dataset:
+    path_to_predictions: 'data/output_final_gpt-5-nano'
+
     
 fit:
   train_dataset:
