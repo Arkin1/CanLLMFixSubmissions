@@ -19,6 +19,7 @@ import argparse
 from utils import clean_source_code
 import seaborn as sns
 import matplotlib.pyplot as plt
+import concurrent.futures
 
 from data_models import Problem, Submission, GeneratedLLMResult, ResultAnalysis
 
@@ -144,6 +145,7 @@ def preprocess_dataset_step(config):
 async def predict_step(config):
     top_k = config['settings'].get('top_k')
     variance_per_sample = config['settings']['variance_per_sample']
+    num_workers = config['settings'].get('num_workers', 4)  # default to 4
 
     r1_dataset_config = config['r1_codeforces_dataset']
 
@@ -172,25 +174,35 @@ async def predict_step(config):
     else:
         submissions = df_to_submissions(submissions_df, problem_manager) 
 
+    semaphore = asyncio.Semaphore(num_workers)
+
+    async def process_submission(submission):
+        async with semaphore:
+            for idx_variance in range(variance_per_sample):
+                results  = []
+                for method in methods:
+                    try:
+                        llm_result = await asyncio.to_thread(method.predict, submission)
+                        llm_result.reward = await method.compute_reward(submission.problem_id, submission.source_code, submission.anchor.source_code, llm_result.source_code)
+                        results.append(llm_result)
+                    except Exception as e:
+                        logger.error(f'Could not predict submission {submission.submission_id} for problem {submission.problem_id}. Reason: {e}. Skipping!')
+                        raise e
+
+                analysis_result = ResultAnalysis(problem_id = submission.problem_id, submission=submission, generated_results=results)
+                problem_output_path = os.path.join(output_path, submission.problem_id.replace('/', '_'))
+                os.makedirs(problem_output_path, exist_ok=True)
+
+                with open(os.path.join(problem_output_path, submission.submission_id + f'_{idx_variance}.json'), 'w', encoding='utf-8') as fp:
+                    fp.write( analysis_result.model_dump_json(indent = 1))
+
     print("Predicting...")
-    for submission in tqdm(submissions):
-        for idx_variance in range(variance_per_sample):
-            results  = []
-            for method in methods:
-                try:
-                    llm_result = method.predict(submission)
-                    llm_result.reward = await method.compute_reward(submission.problem_id, submission.source_code, submission.anchor.source_code, llm_result.source_code)
-                    results.append(llm_result)
-                except Exception as e:
-                    logger.error(f'Could not predict submission {submission.submission_id} for problem {submission.problem_id}. Reason: {e}. Skipping!')
-                    raise e
-
-            analysis_result = ResultAnalysis(problem_id = submission.problem_id, submission=submission, generated_results=results)
-            problem_output_path = os.path.join(output_path, submission.problem_id.replace('/', '_'))
-            os.makedirs(problem_output_path, exist_ok=True)
-
-            with open(os.path.join(problem_output_path, submission.submission_id + f'_{idx_variance}.json'), 'w', encoding='utf-8') as fp:
-                fp.write( analysis_result.model_dump_json(indent = 1))
+    tasks = [process_submission(submission) for submission in submissions]
+    progress = tqdm(total=len(tasks), desc="Processing submissions")
+    for coro in asyncio.as_completed(tasks):
+        await coro
+        progress.update(1)
+    progress.close()
 
 
 def evaluate_step(config):
