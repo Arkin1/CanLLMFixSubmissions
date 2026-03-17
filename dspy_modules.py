@@ -11,7 +11,7 @@ class GeneratedSolutionFromScratchSignature(dspy.Signature):
     output_format: str = dspy.InputField(description = "How the output should be formatted")
     examples: str = dspy.InputField(description = "Examples of input and output. Input is marked by #Input# and output by #Output# ") 
     note: Optional[str] = dspy.InputField(description = "An explanation for an input and an output or a remark.")
-    submission_verdict: str = dspy.InputField(description = "The verdict of the buggy submission (Wrong Answer, Time Limit Exceeded etc.)")
+    programmingLanguage: str = dspy.InputField(description = "The programming language version which is used to compile the code. Can't be changed.")
 
     generated_code: str = dspy.OutputField(description = "The generated code. Please encapsulate it into ```cpp```")
 
@@ -27,6 +27,7 @@ class BugFixerSignature(dspy.Signature):
     output_format: str = dspy.InputField(description = "How the output should be formatted")
     examples: str = dspy.InputField(description = "Examples of input and output. Input is marked by #Input# and output by #Output# ") 
     note: Optional[str] = dspy.InputField(description = "An explanation for an input and an output or a remark.")
+    programmingLanguage: str = dspy.InputField(description = "The programming language version which is used to compile the code. Can't be changed.")
     submission_verdict: str = dspy.InputField(description = "The verdict of the buggy submission (Wrong Answer, Time Limit Exceeded etc.)")
     buggy_code: str = dspy.InputField(description = "The buggy code")
 

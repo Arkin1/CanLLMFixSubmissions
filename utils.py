@@ -429,6 +429,9 @@ def df_to_submissions(submissions_df:pd.DataFrame, problem_manager:ProblemsManag
 
         if submission.anchor.ds_verdict == False:
             logger.warning(f'Submission anchor with id {submission.anchor.submission_id} should pass the tests')
-    
+
+        if submission.programming_language != submission.anchor.programming_language:
+            logger.warning(f'Submission with id {submission.submission_id} has a different programmingLanguage than the anchor. Skipping!')
+            continue
         submissions.append(submission)
     return submissions

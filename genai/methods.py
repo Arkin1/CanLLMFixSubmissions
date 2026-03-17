@@ -83,6 +83,7 @@ class NaiveFixBugLLMMethod(LLMMethod):
                      output_format = problem.output_format,
                      examples = str(problem.examples),
                      note = problem.note or "None",
+                     programmingLanguage = submission.programming_language,
                      submission_verdict = submission.verdict,
                      buggy_code = submission.source_code)
                 
@@ -121,6 +122,7 @@ class GenerateFromScratchLLMMethod(LLMMethod):
                      output_format = problem.output_format,
                      examples = str(problem.examples),
                      note = problem.note or "None",
+                     programmingLanguage = submission.programming_language,
                      submission_verdict = submission.verdict)
             return prediction
         
@@ -213,6 +215,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                             output_format=problem.output_format,
                             examples=str(problem.examples),
                             note=problem.note or "None",
+                            programmingLanguage = submission.programming_language,
                             submission_verdict=submission.verdict,
                             buggy_code=submission.source_code,
                             fixed_code=submission.anchor.source_code).with_inputs(
@@ -229,6 +232,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                             output_format=problem.output_format,
                             examples=str(problem.examples),
                             note=problem.note or "None",
+                            programmingLanguage = submission.programming_language,
                             submission_verdict=submission.verdict,
                             buggy_code=submission.source_code,
                             fixed_code=submission.anchor.source_code).with_inputs(
@@ -255,6 +259,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                      output_format = problem.output_format,
                      examples = str(problem.examples),
                      note = problem.note or "None",
+                     programmingLanguage = submission.programming_language,
                      submission_verdict = submission.verdict,
                      buggy_code = submission.source_code)
                 
