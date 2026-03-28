@@ -20,7 +20,7 @@ from utils import clean_source_code
 import seaborn as sns
 import matplotlib.pyplot as plt
 import concurrent.futures
-
+import numpy as np
 from data_models import Problem, Submission, GeneratedLLMResult, ResultAnalysis
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,13 @@ async def predict_step(config):
     async def process_submission(submission):
         async with semaphore:
             for idx_variance in range(variance_per_sample):
+                problem_output_path = os.path.join(output_path, submission.problem_id.replace('/', '_'))
+                os.makedirs(problem_output_path, exist_ok=True)
+
+                result_path = os.path.join(problem_output_path, submission.submission_id + f'_{idx_variance}.json')
+                if os.path.exists(result_path):
+                    print(f"Path for submission {submission.submission_id} already exists! Skipping!")
+                    continue
                 results  = []
                 for method in methods:
                     try:
@@ -190,10 +197,8 @@ async def predict_step(config):
                         raise e
 
                 analysis_result = ResultAnalysis(problem_id = submission.problem_id, submission=submission, generated_results=results)
-                problem_output_path = os.path.join(output_path, submission.problem_id.replace('/', '_'))
-                os.makedirs(problem_output_path, exist_ok=True)
-
-                with open(os.path.join(problem_output_path, submission.submission_id + f'_{idx_variance}.json'), 'w', encoding='utf-8') as fp:
+                
+                with open(result_path, 'w', encoding='utf-8') as fp:
                     fp.write( analysis_result.model_dump_json(indent = 1))
 
     print("Predicting...")
@@ -238,7 +243,7 @@ def evaluate_step(config):
         
         for m_name, values in metrics.items():
             df_values = pd.DataFrame.from_records(values)
-            df_values = df_values[['total_reward', 'similarity_reward', 'test_reward', 'similarity_baseline']]
+            df_values = df_values[['total_reward', 'similarity_baseline', 'similarity_generated', 'similarity_reward', 'test_reward']]
 
             max_pos = df_values['total_reward'].argmax()
 
@@ -249,16 +254,16 @@ def evaluate_step(config):
     result_sample_df = pd.DataFrame.from_records(result)
     result_sample_df.to_csv(os.path.join(output_path, 'result_sample.csv'), index=False)
 
-    result_sample_df['similarity_baseline_binarize'] = result_sample_df['similarity_baseline'].round(1)
-    result_sample_df = result_sample_df.drop(['sample_id', 'problem_id', 'similarity_baseline'], axis = 1)
+    result_sample_df['similarity_baseline_binarize'] = np.floor(result_sample_df['similarity_baseline'] * 10) / 10
+    result_sample_df = result_sample_df.drop(['sample_id', 'problem_id'], axis = 1)
 
     result_no_verdict_df = result_sample_df.copy()
     result_no_verdict_df = result_no_verdict_df.drop(['verdict'], axis = 1)
-    result_no_verdict_df = result_no_verdict_df.groupby(['model', 'method', 'similarity_baseline_binarize']).agg(['mean', 'sem'])
+    result_no_verdict_df = result_no_verdict_df.groupby(['model', 'method', 'similarity_baseline_binarize']).agg(['mean', 'sem', 'std'])
     result_no_verdict_df.reset_index().to_csv(os.path.join(output_path, 'result_no_verdicts.csv'), index=False)
 
     result_with_verdict_df = result_sample_df.copy()
-    result_with_verdict_df = result_with_verdict_df.groupby(['model', 'method', 'verdict', 'similarity_baseline_binarize']).agg(['mean', 'sem'])
+    result_with_verdict_df = result_with_verdict_df.groupby(['model', 'method', 'verdict', 'similarity_baseline_binarize']).agg(['mean', 'sem', 'std'])
     result_with_verdict_df.reset_index().to_csv(os.path.join(output_path, 'result_with_verdicts.csv'), index=False)
 
 async def fit_step(config):
