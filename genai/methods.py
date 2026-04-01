@@ -220,7 +220,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                             buggy_code=submission.source_code,
                             fixed_code=submission.anchor.source_code).with_inputs(
                             "problem_description", "input_format", "output_format", 
-                            "examples", "note", "submission_verdict", "buggy_code"
+                            "examples", "note", "programmingLanguage", "submission_verdict", "buggy_code"
                         ))
                 
             for submission in val_submissions:
@@ -237,7 +237,7 @@ class DSPyOptimizedLLMMethod(LLMMethod):
                             buggy_code=submission.source_code,
                             fixed_code=submission.anchor.source_code).with_inputs(
                             "problem_description", "input_format", "output_format", 
-                            "examples", "note", "submission_verdict", "buggy_code"
+                            "examples", "note", "programmingLanguage", "submission_verdict", "buggy_code"
                         ))
 
             

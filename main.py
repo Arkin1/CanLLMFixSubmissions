@@ -150,6 +150,12 @@ async def predict_step(config):
     r1_dataset_config = config['r1_codeforces_dataset']
 
     predict_config = config['predict']
+    
+    models_used = [f'{m_args['vendor']}_{m_args['model_name']}' for m_name, m_args in predict_config['methods'].items()]
+    models_used = set(models_used)
+    if len(models_used) > 1:
+        raise Exception("Same model must be used for all the methods")
+        
     output_path = predict_config['output']['path']
     os.makedirs(output_path, exist_ok=True)
 
