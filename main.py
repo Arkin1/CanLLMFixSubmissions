@@ -258,6 +258,7 @@ def evaluate_step(config):
             result.append(result_sample | max_values)
     
     result_sample_df = pd.DataFrame.from_records(result)
+    result_sample_df['sim_ratio'] = result_sample_df['similarity_generated'] / (result_sample_df['similarity_baseline'] + 1e-8)
     result_sample_df.to_csv(os.path.join(output_path, 'result_sample.csv'), index=False)
 
     result_sample_df['similarity_baseline_binarize'] = np.floor(result_sample_df['similarity_baseline'] * 10) / 10
