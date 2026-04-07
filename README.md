@@ -16,3 +16,13 @@ There is a `parameters.yaml` file that allows you to specify various parameters 
 - fit: Do prompt optimization via GEPA.
 
 If you run via VSCode, there are multiple tasks defined in .vscode. If not, you just do `python main.py [step]`. E.g. `python main.py --predict`.
+
+## Data
+In the `/data` folder you can find the following:
+- dataset.csv - The original dataset
+- dataset_preprocessed.csv - The preprocessed dataset
+- dataset_train.csv - Train dataset used for GEPA
+- dataset_val.csv - Validation dataset used for GEPA
+- dataset_test.csv - Test dataset used for prediction and evaluation.
+## Models
+In the `data/models` you can find the prompt after GEPA optimization.
