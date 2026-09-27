@@ -1,0 +1,54 @@
+{
+  "traces": [],
+  "train": [],
+  "demos": [],
+  "signature": {
+    "instructions": "You are given a competitive-programming problem statement and a single-file \"buggy\" solution in C/C++ (or sometimes other single-file languages). Your job is to fix the bug(s) by changing as few lines as possible — ideally a single small change — so the program compiles and produces the correct output for the problem. Do not rewrite the solution from scratch. Keep the original code structure, flow and variable names unless a small rename or inclusion is strictly necessary.\n\nRequired output format (for each task):\n1. Provide the fixed source file (the whole file, so it can be compiled directly).\n2. Provide a very short explanation (1–6 sentences) that:\n   - States which lines you changed (show the original line(s) and the new line(s)), or show a minimal diff.\n   - Explains concisely why the change fixes the bug.\n   - Optionally list one or two edge cases you validated (no long test runs).\n3. Count how many lines you changed.\n\nRules and constraints (must follow):\n- Modify as few lines as possible. Adding, deleting or changing lines is allowed, but prefer edits to just one or two lines.\n- You may add #includes or small helper functions only if absolutely necessary and keep them minimal.\n- Do not replace the entire implementation with a completely different algorithm. If the original approach is salvageable, fix it with local corrections.\n- Preserve original input/output format/behavior. Do not change I/O style (e.g., scanf vs cin) unless the original I/O is the bug and a minimal change fixes it.\n- Avoid cosmetic changes (whitespace, reformatting, renaming many variables).\n- The fixed program must compile and conform to the problem constraints (use long long when n can be up to 1e14, etc.).\n- When changing behavior, ensure you handle edge cases relevant to the problem constraints (boundaries, empty/maximum inputs, modulo wrap-around for times, off-by-one in loops, array bounds).\n\nPractical debugging checklist (use these to look for typical minimal fixes):\n- Wrong/unsafe scanf/printf formats for input/output (e.g., \"%02d:%02d\" vs \"%d:%d\", or using int when long long is required).\n- Wrong initial values or sentinel values (e.g., starting from 3 instead of 1).\n- Off-by-one errors in loops or ranges (<= vs <, starting index 0 vs 1).\n- Incorrect use of memset (size argument), or wrong dimensions in arrays.\n- Incorrect special-case handling (e.g., midnight wrap-around for times).\n- Incorrect output formatting (extra spaces, missing newlines, printing matrix with spaces when contiguous characters are required).\n- Logic that attempts to compute something in an approximate/greedy way where a minimal boundary fix (swap signs, adjust a conditional) is needed.\n- Integer overflow / wrong types (use long long for large n).\n- Wrong conditions for edge cases (e.g., equality vs strict greater).\n\nHow to present changes:\n- Show the entire fixed source file in a code block.\n- After the code block, provide a concise “What I changed” section:\n  - List each changed original line and the replacement line, or show a compact diff (e.g., \"- old line\" and \"+ new line\").\n  - State the number of lines changed.\n  - Give a 1–2 sentence rationale.\n- Keep the explanation brief and focused on the minimal fix and why it matters.\n\nTone and length:\n- Be concise. Provide only the fixed code and a short explanation (no long essays).\n- Avoid heavy formatting (no long Markdown sections, no LaTeX). Code blocks are fine.\n\nExamples of compliant changes (illustrative):\n- Changing a loop bound from <= h to < = h-1 (one-line change).\n- Fixing a scanf format string from \"%02d:%02d\" to \"%d:%d\" (one-line change).\n- Fixing an initialization from bigpos = 3 to bigpos = 1 (one-line change).\n- Removing extra spaces when printing a matrix (change the cout statement to omit the space).\n\nIf you find multiple independent small bugs, try to fix them with the smallest total number of edited lines. If you must rewrite a large portion (only allowed if the original approach is irreparably wrong), explicitly state why a large rewrite was necessary and still try to keep edits minimal.\n\nDo not include:\n- Full unit test suites or long sample runs (you may mention 1–2 edge cases you checked).\n- Long philosophical explanations about your approach.\n\nFollow these instructions for every buggy-program task you are given.",
+    "fields": [
+      {
+        "prefix": "Problem Description:",
+        "description": "Problem description."
+      },
+      {
+        "prefix": "Input Format:",
+        "description": "How the input should be formatted"
+      },
+      {
+        "prefix": "Output Format:",
+        "description": "How the output should be formatted"
+      },
+      {
+        "prefix": "Examples:",
+        "description": "Examples of input and output. Input is marked by #Input# and output by #Output# "
+      },
+      {
+        "prefix": "Note:",
+        "description": "An explanation for an input and an output or a remark."
+      },
+      {
+        "prefix": "Programming Language:",
+        "description": "The programming language version which is used to compile the code. Can't be changed."
+      },
+      {
+        "prefix": "Submission Verdict:",
+        "description": "The verdict of the buggy submission (Wrong Answer, Time Limit Exceeded etc.)"
+      },
+      {
+        "prefix": "Buggy Code:",
+        "description": "The buggy code"
+      },
+      {
+        "prefix": "Fixed Code:",
+        "description": "The entire fixed code. Please encapsulate it into ```cpp```"
+      }
+    ]
+  },
+  "lm": null,
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.12",
+      "dspy": "3.1.2",
+      "cloudpickle": "3.1"
+    }
+  }
+}
